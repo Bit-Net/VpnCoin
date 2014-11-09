@@ -80,7 +80,7 @@ CCriticalSection cs_setservAddNodeAddresses;
 
 static CSemaphore *semOutbound = NULL;
 
-int BitNet_Version = 1115;
+int BitNet_Version = 1118;
 int BitNet_Network_id = 1;  // VpnCoin = 1
 
 int GetTotalConnects()
@@ -650,8 +650,8 @@ void CNode::CloseSocketDisconnect()
 		closesocket(hSocket);
         hSocket = INVALID_SOCKET;
 		
-        AddNodeIp(this->vBitNet.v_IpAddr, 0);
 #ifdef WIN32
+        AddNodeIp(this->vBitNet.v_IpAddr, 0);
 		if( dUseChat || dStartVpnClient || dStartVpnServer )
 		{
 			SynNodeToVpnGui(this, 0, 0, NULL);
@@ -1117,7 +1117,7 @@ void ThreadSocketHandler2(void* parg)
                 if (nErr != WSAEWOULDBLOCK)
                     printf("socket error accept failed: %d\n", nErr);
             }
-            else if (nInbound >= GetArg("-maxconnections", 125) - MAX_OUTBOUND_CONNECTIONS)
+            else if (nInbound >= GetArg("-maxconnections", 500) - MAX_OUTBOUND_CONNECTIONS)
             {
                 closesocket(hSocket);
             }
@@ -1226,7 +1226,8 @@ void ThreadSocketHandler2(void* parg)
             int64_t nTime = GetTime();
             if (nTime - pnode->nTimeConnected > 60)
             {
-                if (pnode->nLastRecv == 0 || pnode->nLastSend == 0)
+                if(pnode->nLastSend == 0){ pnode->PushVersion(); }			
+                else if (pnode->nLastRecv == 0 || pnode->nLastSend == 0)
                 {
                     printf("socket no message in first 60 seconds, %d %d\n", pnode->nLastRecv != 0, pnode->nLastSend != 0);
                     pnode->fDisconnect = true;
@@ -1246,7 +1247,13 @@ void ThreadSocketHandler2(void* parg)
                     printf("ping timeout: %fs\n", 0.000001 * (GetTimeMicros() - pnode->nPingUsecStart));
                     pnode->fDisconnect = true;
                 }
-            }
+            }else{
+				if( pnode->nLastSend == 0 )
+				{ 
+					pnode->PushVersion();
+					printf("pnode (%s) nLastSend = 0, PushVersion()\n", pnode->addr.ToString().c_str());
+				}
+			}
         }
         {
             LOCK(cs_vNodes);

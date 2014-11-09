@@ -3064,20 +3064,25 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
     else if (pfrom->nVersion == 0)
     {
         // Must have a version message before anything else
-        pfrom->Misbehaving(1);
-        return false;
+        //pfrom->Misbehaving(1);
+        //return false;
+		return true;
     }
 
 
     else if (strCommand == "verack")
     {
+		pfrom->SetRecvVersion(min(pfrom->nVersion, PROTOCOL_VERSION));
 #ifdef WIN32
         pfrom->PushVpnInfo();
+		AddNodeIp(pfrom->vBitNet.v_IpAddr, 1);		
 #endif
-		pfrom->SetRecvVersion(min(pfrom->nVersion, PROTOCOL_VERSION));
-		AddNodeIp(pfrom->vBitNet.v_IpAddr, 1);
     }
-
+	else if (strCommand == "ShutDown")
+	{ 
+	    pfrom->CloseSocketDisconnect(); 
+		return true; 
+	}
     else if( (strCommand == "vpn-1") || (strCommand == "BitNet-1") )
     {
         int dShowInOtherList;
@@ -3122,7 +3127,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 	
     else if( strCommand == "vpn-a" )	// vpn nodes address
 	{
-		int iii = GetArg("-autosyncnode", 1);
+#ifdef WIN32		
+		int iii = GetArg("-autosyncnode", 0);
         if( fDebug ){ printf("Recv sync ip:: autosyncnode=%d\n", iii); }
 		if( iii > 0 )
 		{
@@ -3146,9 +3152,15 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 				}
 			}
 		}
+#endif		
 		return true;
 	}
-
+	else if( pfrom->vBitNet.v_Network_id != BitNet_Network_id )
+	{ 
+		if( fDebug ){ printf("Node %s Network_id [%d] diff with [%d]\n", pfrom->addr.ToString().c_str(), pfrom->vBitNet.v_Network_id, BitNet_Network_id); }
+		return true; 
+	}
+	
 	else if (strCommand == "addr")
     {
         vector<CAddress> vAddr;
@@ -3779,20 +3791,20 @@ bool ProcessMessages(CNode* pfrom)
         {
             {
                 int bgo = 1;
-                if( pfrom->nVersion )
+                /* if( pfrom->nVersion )
                 {
                     if( pfrom->vBitNet.v_Network_id != BitNet_Network_id )
                     {
                         if( strCommand.find("BitNet-") == string::npos ){ bgo = 0; }
                     }
-                }
+                } */
 
                 if( bgo ){
                     LOCK(cs_main);
                     fRet = ProcessMessage(pfrom, strCommand, vRecv, msg.nTime);
                 }else if( fDebug ){
-                    printf("ProcessMessages(%s, %u bytes), pfrom.network_id %u : %u,  nChecksum=%08x hdr.nChecksum=%08x\n",
-                        strCommand.c_str(), nMessageSize, pfrom->vBitNet.v_Network_id, BitNet_Network_id, nChecksum, hdr.nChecksum);
+                    //printf("ProcessMessages(%s, %u bytes), pfrom.network_id %u : %u,  nChecksum=%08x hdr.nChecksum=%08x\n",
+                    //    strCommand.c_str(), nMessageSize, pfrom->vBitNet.v_Network_id, BitNet_Network_id, nChecksum, hdr.nChecksum);
                 }
             }
             if (fShutdown)
