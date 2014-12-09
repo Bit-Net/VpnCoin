@@ -2913,13 +2913,18 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         return true;
     }
 
-    if (strCommand == "version")
+    if (strCommand == "getver")
+	{
+		pfrom->PushVersion(); 
+		return true;
+	}	
+    else if (strCommand == "version")
     {
         // Each connection can only send one version message
         if (pfrom->nVersion != 0)
         {
-            pfrom->Misbehaving(1);
-            return false;
+            //pfrom->Misbehaving(1);
+            return true;
         }
 
         int64_t nTime;
@@ -3059,7 +3064,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         if (!IsInitialBlockDownload())
             Checkpoints::AskForPendingSyncCheckpoint(pfrom);
     }
-
 
     else if (pfrom->nVersion == 0)
     {
