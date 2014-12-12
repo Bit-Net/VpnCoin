@@ -56,8 +56,6 @@ uint256 hashBestChain = 0;
 CBlockIndex* pindexBest = NULL;
 int64_t nTimeBestReceived = 0;
 
-CMedianFilter<int> cPeerBlockCounts(5, 0); // Amount of blocks that other nodes claim to have
-
 map<uint256, CBlock*> mapOrphanBlocks;
 multimap<uint256, CBlock*> mapOrphanBlocksByPrev;
 set<pair<COutPoint, unsigned int> > setStakeSeenOrphan;
@@ -1174,12 +1172,6 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits)
         return error("CheckProofOfWork() : hash doesn't match nBits");
 
     return true;
-}
-
-// Return maximum amount of blocks that other nodes claim to have
-int GetNumBlocksOfPeers()
-{
-    return std::max(cPeerBlockCounts.median(), Checkpoints::GetTotalBlocksEstimate());
 }
 
 bool IsInitialBlockDownload()
@@ -2472,7 +2464,6 @@ bool CheckDiskSpace(uint64_t nAdditionalBytes)
     // Check for nMinDiskSpace bytes (currently 50MB)
     if (nFreeBytesAvailable < nMinDiskSpace + nAdditionalBytes)
     {
-        fShutdown = true;
         string strMessage = _("Warning: Disk space is low!");
         strMiscWarning = strMessage;
         printf("*** %s\n", strMessage.c_str());
@@ -2752,8 +2743,9 @@ bool LoadExternalBlockFile(FILE* fileIn)
         try {
             CAutoFile blkdat(fileIn, SER_DISK, CLIENT_VERSION);
             unsigned int nPos = 0;
-            while (nPos != (unsigned int)-1 && blkdat.good() && !fRequestShutdown)
+            while (nPos != (unsigned int)-1 && blkdat.good())
             {
+                boost::this_thread::interruption_point();
                 unsigned char pchData[65536];
                 do {
                     fseek(blkdat, nPos, SEEK_SET);
@@ -2775,7 +2767,8 @@ bool LoadExternalBlockFile(FILE* fileIn)
                     }
                     else
                         nPos += sizeof(pchData) - sizeof(pchMessageStart) + 1;
-                } while(!fRequestShutdown);
+                    boost::this_thread::interruption_point();
+                } while(true);
                 if (nPos == (unsigned int)-1)
                     break;
                 fseek(blkdat, nPos, SEEK_SET);
@@ -2818,6 +2811,9 @@ string GetWarnings(string strFor)
 
     if (GetBoolArg("-testsafemode"))
         strRPC = "test";
+
+    if (!CLIENT_VERSION_IS_RELEASE)
+        strStatusBar = _("This is a pre-release test build - use at your own risk - do not use for mining or merchant applications");
 
     // Misc warnings like out of disk space and clock is wrong
     if (strMiscWarning != "")
@@ -3058,8 +3054,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 
         printf("receive version message: version %d, blocks=%d, us=%s, them=%s, peer=%s, Network_id =%u\n", pfrom->nVersion, pfrom->nStartingHeight, addrMe.ToString().c_str(), addrFrom.ToString().c_str(), pfrom->addr.ToString().c_str(), pfrom->vBitNet.v_Network_id);
 
-        cPeerBlockCounts.input(pfrom->nStartingHeight);
-
         // ppcoin: ask for pending sync-checkpoint if any
         if (!IsInitialBlockDownload())
             Checkpoints::AskForPendingSyncCheckpoint(pfrom);
@@ -3185,8 +3179,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         int64_t nSince = nNow - 10 * 60;
         BOOST_FOREACH(CAddress& addr, vAddr)
         {
-            if (fShutdown)
-                return true;
+            boost::this_thread::interruption_point();
             if (addr.nTime <= 100000000 || addr.nTime > nNow + 10 * 60)
                 addr.nTime = nNow - 5 * 24 * 60 * 60;
             pfrom->AddAddressKnown(addr);
@@ -3254,8 +3247,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         {
             const CInv &inv = vInv[nInv];
 
-            if (fShutdown)
-                return true;
+            boost::this_thread::interruption_point();
             pfrom->AddInventoryKnown(inv);
 
             bool fAlreadyHave = AlreadyHave(txdb, inv);
@@ -3296,8 +3288,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 
         BOOST_FOREACH(const CInv& inv, vInv)
         {
-            if (fShutdown)
-                return true;
+            boost::this_thread::interruption_point();
             if (fDebugNet || (vInv.size() == 1))
                 printf("received getdata for: %s\n", inv.ToString().c_str());
 
@@ -3811,8 +3802,7 @@ bool ProcessMessages(CNode* pfrom)
                     //    strCommand.c_str(), nMessageSize, pfrom->vBitNet.v_Network_id, BitNet_Network_id, nChecksum, hdr.nChecksum);
                 }
             }
-            if (fShutdown)
-                break;
+            boost::this_thread::interruption_point();
         }
         catch (std::ios_base::failure& e)
         {
@@ -3830,6 +3820,9 @@ bool ProcessMessages(CNode* pfrom)
             {
                 PrintExceptionContinue(&e, "ProcessMessages()");
             }
+        }
+        catch (boost::thread_interrupted) {
+            throw;
         }
         catch (std::exception& e) {
             PrintExceptionContinue(&e, "ProcessMessages()");

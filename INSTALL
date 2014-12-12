@@ -4,6 +4,6 @@ See doc/readme-qt.rst for instructions on building VpnCoin QT,
 the intended-for-end-users, nice-graphical-interface, reference
 implementation of VpnCoin.
 
-See doc/build-*.txt for instructions on building blackcoind,
+See doc/build-*.txt for instructions on building vpncoind,
 the intended-for-services, no-graphical-interface, reference
 implementation of VpnCoin.

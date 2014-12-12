@@ -63,8 +63,6 @@ bool fDebug = false;
 bool fDebugNet = false;
 bool fPrintToConsole = false;
 bool fPrintToDebugger = false;
-bool fRequestShutdown = false;
-bool fShutdown = false;
 bool fDaemon = false;
 bool fServer = false;
 bool fCommandLine = false;
@@ -1334,16 +1332,4 @@ void RenameThread(const char* name)
     // Prevent warnings for unused parameters...
     (void)name;
 #endif
-}
-
-bool NewThread(void(*pfn)(void*), void* parg)
-{
-    try
-    {
-        boost::thread(pfn, parg); // thread detaches when out of scope
-    } catch(boost::thread_resource_error &e) {
-        printf("Error creating thread: %s\n", e.what());
-        return false;
-    }
-    return true;
 }
