@@ -105,7 +105,7 @@ Value getinfo(const Array& params, bool fHelp)
     obj.push_back(Pair("paytxfee",      ValueFromAmount(nTransactionFee)));
     obj.push_back(Pair("mininput",      ValueFromAmount(nMinimumInputValue)));
     if (pwalletMain->IsCrypted())
-        obj.push_back(Pair("unlocked_until", (int64_t)nWalletUnlockTime / 1000));
+        obj.push_back(Pair("unlocked_until", (int64_t)nWalletUnlockTime));
     obj.push_back(Pair("errors",        GetWarnings("statusbar")));
     return obj;
 }
@@ -752,7 +752,7 @@ Value sendmany(const Array& params, bool fHelp)
 	std::string stxData;
     CReserveKey keyChange(pwalletMain);
     int64_t nFeeRequired = 0;
-    bool fCreated = pwalletMain->CreateTransaction(vecSend, wtx, keyChange, nFeeRequired, stxData);
+    bool fCreated = pwalletMain->CreateTransaction(vecSend, wtx, keyChange, nFeeRequired);
     if (!fCreated)
     {
         if (totalAmount + nFeeRequired > pwalletMain->GetBalance())
@@ -1371,56 +1371,11 @@ Value keypoolrefill(const Array& params, bool fHelp)
 }
 
 
-void ThreadTopUpKeyPool(void* parg)
+static void LockWallet(CWallet* pWallet)
 {
-    // Make this thread recognisable as the key-topping-up thread
-    RenameThread("vpncoin-key-top");
-
-    pwalletMain->TopUpKeyPool();
-}
-
-void ThreadCleanWalletPassphrase(void* parg)
-{
-    // Make this thread recognisable as the wallet relocking thread
-    RenameThread("vpncoin-lock-wa");
-
-    int64_t nMyWakeTime = GetTimeMillis() + *((int64_t*)parg) * 1000;
-
-    ENTER_CRITICAL_SECTION(cs_nWalletUnlockTime);
-
-    if (nWalletUnlockTime == 0)
-    {
-        nWalletUnlockTime = nMyWakeTime;
-
-        do
-        {
-            if (nWalletUnlockTime==0)
-                break;
-            int64_t nToSleep = nWalletUnlockTime - GetTimeMillis();
-            if (nToSleep <= 0)
-                break;
-
-            LEAVE_CRITICAL_SECTION(cs_nWalletUnlockTime);
-            MilliSleep(nToSleep);
-            ENTER_CRITICAL_SECTION(cs_nWalletUnlockTime);
-
-        } while(1);
-
-        if (nWalletUnlockTime)
-        {
-            nWalletUnlockTime = 0;
-            pwalletMain->Lock();
-        }
-    }
-    else
-    {
-        if (nWalletUnlockTime < nMyWakeTime)
-            nWalletUnlockTime = nMyWakeTime;
-    }
-
-    LEAVE_CRITICAL_SECTION(cs_nWalletUnlockTime);
-
-    delete (int64_t*)parg;
+    LOCK(cs_nWalletUnlockTime);
+    nWalletUnlockTime = 0;
+    pWallet->Lock();
 }
 
 Value walletpassphrase(const Array& params, bool fHelp)
@@ -1434,13 +1389,6 @@ Value walletpassphrase(const Array& params, bool fHelp)
         return true;
     if (!pwalletMain->IsCrypted())
         throw JSONRPCError(RPC_WALLET_WRONG_ENC_STATE, "Error: running with an unencrypted wallet, but walletpassphrase was called.");
-
-    if (!pwalletMain->IsLocked())
-        throw JSONRPCError(RPC_WALLET_ALREADY_UNLOCKED, "Error: Wallet is already unlocked, use walletlock first if need to change unlock settings.");
-
-    int64_t nSleepTime = params[1].get_int64();
-    if (nSleepTime <= 0 || nSleepTime >= std::numeric_limits<int64_t>::max() / 1000000000)
-        throw runtime_error("timeout is out of bounds");
 
     // Note that the walletpassphrase is stored in params[0] which is not mlock()ed
     SecureString strWalletPass;
@@ -1459,9 +1407,12 @@ Value walletpassphrase(const Array& params, bool fHelp)
             "walletpassphrase <passphrase> <timeout>\n"
             "Stores the wallet decryption key in memory for <timeout> seconds.");
 
-    NewThread(ThreadTopUpKeyPool, NULL);
-    int64_t* pnSleepTime = new int64_t(nSleepTime);
-    NewThread(ThreadCleanWalletPassphrase, pnSleepTime);
+    pwalletMain->TopUpKeyPool();
+
+    int64_t nSleepTime = params[1].get_int64();
+    LOCK(cs_nWalletUnlockTime);
+    nWalletUnlockTime = GetTime() + nSleepTime;
+    RPCRunLater("lockwallet", boost::bind(LockWallet, pwalletMain), nSleepTime);
 
     // ppcoin: if user OS account compromised prevent trivial sendmoney commands
     if (params.size() > 2)

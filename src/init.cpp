@@ -10,7 +10,6 @@
 #include "util.h"
 #include "ui_interface.h"
 #include "checkpoints.h"
-#include "zerocoin/ZeroTest.h"
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/fstream.hpp>
 #include <boost/filesystem/convenience.hpp>
@@ -29,84 +28,82 @@ using namespace boost;
 CWallet* pwalletMain;
 CClientUIInterface uiInterface;
 bool fConfChange;
+bool fMinimizeCoinAge;
 unsigned int nNodeLifespan;
 unsigned int nDerivationMethodIndex;
 unsigned int nMinerSleep;
 bool fUseFastIndex;
 enum Checkpoints::CPMode CheckpointsMode;
 
-#ifdef WIN32
-extern void LoadIniCfg( DWORD bStart, DWORD dRelay );
-#endif
-
 //////////////////////////////////////////////////////////////////////////////
 //
 // Shutdown
 //
 
-void ExitTimeout(void* parg)
-{
-#ifdef WIN32
-    MilliSleep(5000);
-    ExitProcess(0);
-#endif
-}
+//
+// Thread management and startup/shutdown:
+//
+// The network-processing threads are all part of a thread group
+// created by AppInit() or the Qt main() function.
+//
+// A clean exit happens when StartShutdown() or the SIGTERM
+// signal handler sets fRequestShutdown, which triggers
+// the DetectShutdownThread(), which interrupts the main thread group.
+// DetectShutdownThread() then exits, which causes AppInit() to
+// continue (it .joins the shutdown thread).
+// Shutdown() is then
+// called to clean up database connections, and stop other
+// threads that should only be stopped after the main network-processing
+// threads have exited.
+//
+// Note that if running -daemon the parent process returns from AppInit2
+// before adding any threads to the threadGroup, so .join_all() returns
+// immediately and the parent exits from main().
+//
+// Shutdown for Qt is very similar, only it uses a QTimer to detect
+// fRequestShutdown getting set, and then does the normal Qt
+// shutdown thing.
+//
+
+volatile bool fRequestShutdown = false;
 
 void StartShutdown()
 {
-#ifdef QT_GUI
-    // ensure we leave the Qt main loop for a clean GUI exit (Shutdown() is called in bitcoin.cpp afterwards)
-    uiInterface.QueueShutdown();
-#else
-    // Without UI, Shutdown() can simply be started in a new thread
-    NewThread(Shutdown, NULL);
-#endif
+    fRequestShutdown = true;
+}
+bool ShutdownRequested()
+{
+    return fRequestShutdown;
 }
 
-void Shutdown(void* parg)
+void Shutdown()
 {
     static CCriticalSection cs_Shutdown;
-    static bool fTaken;
+    TRY_LOCK(cs_Shutdown, lockShutdown);
+    if (!lockShutdown) return;
 
-    // Make this thread recognisable as the shutdown thread
     RenameThread("vpncoin-shutoff");
+    nTransactionsUpdated++;
+    StopRPCThreads();
+    bitdb.Flush(false);
+    StopNode();
+    bitdb.Flush(true);
+    boost::filesystem::remove(GetPidFile());
+    UnregisterWallet(pwalletMain);
+    delete pwalletMain;
+}
 
-    bool fFirstThread = false;
+//
+// Signal handlers are very limited in what they are allowed to do, so:
+//
+void DetectShutdownThread(boost::thread_group* threadGroup)
+{
+    // Tell the main threads to shutdown.
+    while (!fRequestShutdown)
     {
-        TRY_LOCK(cs_Shutdown, lockShutdown);
-        if (lockShutdown)
-        {
-            fFirstThread = !fTaken;
-            fTaken = true;
-        }
-    }
-    static bool fExit;
-    if (fFirstThread)
-    {
-        fShutdown = true;
-        nTransactionsUpdated++;
-//        CTxDB().Close();
-        bitdb.Flush(false);
-        StopNode();
-        bitdb.Flush(true);
-        boost::filesystem::remove(GetPidFile());
-        UnregisterWallet(pwalletMain);
-        delete pwalletMain;
-        NewThread(ExitTimeout, NULL);
-        MilliSleep(50);
-        printf("VpnCoin exited\n\n");
-        fExit = true;
-#ifndef QT_GUI
-        // ensure non-UI client gets exited here, but let Bitcoin-Qt reach 'return 0;' in bitcoin.cpp
-        exit(0);
-#endif
-    }
-    else
-    {
-        while (!fExit)
-            MilliSleep(500);
-        MilliSleep(100);
-        ExitThread(0);
+        MilliSleep(200);
+        if (fRequestShutdown)
+            threadGroup->interrupt_all();
     }
 }
 
@@ -131,6 +128,9 @@ void HandleSIGHUP(int)
 #if !defined(QT_GUI)
 bool AppInit(int argc, char* argv[])
 {
+    boost::thread_group threadGroup;
+    boost::thread* detectShutdownThread = NULL;
+
     bool fRet = false;
     try
     {
@@ -142,14 +142,14 @@ bool AppInit(int argc, char* argv[])
         if (!boost::filesystem::is_directory(GetDataDir(false)))
         {
             fprintf(stderr, "Error: Specified directory does not exist\n");
-            Shutdown(NULL);
+            Shutdown();
         }
         ReadConfigFile(mapArgs, mapMultiArgs);
 
         if (mapArgs.count("-?") || mapArgs.count("--help"))
         {
             // First part of help message is specific to bitcoind / RPC client
-            std::string strUsage = _("VpnCoin version") + " " + FormatFullVersion() + "\n\n" +
+            std::string strUsage = _("VPNCoin version") + " " + FormatFullVersion() + "\n\n" +
                 _("Usage:") + "\n" +
                   "  vpncoind [options]                     " + "\n" +
                   "  vpncoind [options] <command> [params]  " + _("Send command to -server or vpncoind") + "\n" +
@@ -172,16 +172,52 @@ bool AppInit(int argc, char* argv[])
             int ret = CommandLineRPC(argc, argv);
             exit(ret);
         }
+#if !defined(WIN32)
+        fDaemon = GetBoolArg("-daemon");
+        if (fDaemon)
+        {
+            // Daemonize
+            pid_t pid = fork();
+            if (pid < 0)
+            {
+                fprintf(stderr, "Error: fork() returned %d errno %d\n", pid, errno);
+                return false;
+            }
+            if (pid > 0) // Parent process, pid is child process id
+            {
+                CreatePidFile(GetPidFile(), pid);
+                return true;
+            }
+            // Child process falls through to rest of initialization
 
-        fRet = AppInit2();
+            pid_t sid = setsid();
+            if (sid < 0)
+                fprintf(stderr, "Error: setsid() returned %d errno %d\n", sid, errno);
+        }
+#endif
+
+        detectShutdownThread = new boost::thread(boost::bind(&DetectShutdownThread, &threadGroup));
+        fRet = AppInit2(threadGroup);
     }
     catch (std::exception& e) {
         PrintException(&e, "AppInit()");
     } catch (...) {
         PrintException(NULL, "AppInit()");
     }
-    if (!fRet)
-        Shutdown(NULL);
+    if (!fRet) {
+      if (detectShutdownThread)
+        detectShutdownThread->interrupt();
+      threadGroup.interrupt_all();
+    }
+
+    if (detectShutdownThread)
+    {
+        detectShutdownThread->join();
+        delete detectShutdownThread;
+	detectShutdownThread = NULL;
+    }
+    Shutdown();
+
     return fRet;
 }
 
@@ -198,19 +234,19 @@ int main(int argc, char* argv[])
     if (fRet && fDaemon)
         return 0;
 
-    return 1;
+    return (fRet ? 0 : 1);
 }
 #endif
 
 bool static InitError(const std::string &str)
 {
-    uiInterface.ThreadSafeMessageBox(str, _("VpnCoin"), CClientUIInterface::OK | CClientUIInterface::MODAL);
+    uiInterface.ThreadSafeMessageBox(str, _("VPNCoin"), CClientUIInterface::OK | CClientUIInterface::MODAL);
     return false;
 }
 
 bool static InitWarning(const std::string &str)
 {
-    uiInterface.ThreadSafeMessageBox(str, _("VpnCoin"), CClientUIInterface::OK | CClientUIInterface::ICON_EXCLAMATION | CClientUIInterface::MODAL);
+    uiInterface.ThreadSafeMessageBox(str, _("VPNCoin"), CClientUIInterface::OK | CClientUIInterface::ICON_EXCLAMATION | CClientUIInterface::MODAL);
     return true;
 }
 
@@ -243,7 +279,7 @@ std::string HelpMessage()
         "  -socks=<n>             " + _("Select the version of socks proxy to use (4-5, default: 5)") + "\n" +
         "  -tor=<ip:port>         " + _("Use proxy to reach tor hidden services (default: same as -proxy)") + "\n"
         "  -dns                   " + _("Allow DNS lookups for -addnode, -seednode and -connect") + "\n" +
-        "  -port=<port>           " + _("Listen for connections on <port> (default: 920 or testnet: 1920)") + "\n" +
+        "  -port=<port>           " + _("Listen for connections on <port> (default: 15714 or testnet: 25714)") + "\n" +
         "  -maxconnections=<n>    " + _("Maintain at most <n> connections to peers (default: 125)") + "\n" +
         "  -addnode=<ip>          " + _("Add a node to connect to and attempt to keep the connection open") + "\n" +
         "  -connect=<ip>          " + _("Connect only to the specified node(s)") + "\n" +
@@ -251,7 +287,6 @@ std::string HelpMessage()
         "  -externalip=<ip>       " + _("Specify your own public address") + "\n" +
         "  -onlynet=<net>         " + _("Only connect to nodes in network <net> (IPv4, IPv6 or Tor)") + "\n" +
         "  -discover              " + _("Discover own IP address (default: 1 when listening and no -externalip)") + "\n" +
-        "  -irc                   " + _("Find peers using internet relay chat (default: 0)") + "\n" +
         "  -listen                " + _("Accept connections from outside (default: 1 if no -proxy or -connect)") + "\n" +
         "  -bind=<addr>           " + _("Bind to given address. Use [host]:port notation for IPv6") + "\n" +
         "  -dnsseed               " + _("Query for peer addresses via DNS lookup, if low on addresses (default: 1 unless -connect)") + "\n" +
@@ -288,12 +323,14 @@ std::string HelpMessage()
 #endif
         "  -rpcuser=<user>        " + _("Username for JSON-RPC connections") + "\n" +
         "  -rpcpassword=<pw>      " + _("Password for JSON-RPC connections") + "\n" +
-        "  -rpcport=<port>        " + _("Listen for JSON-RPC connections on <port> (default: 921 or testnet: 1921)") + "\n" +
+        "  -rpcport=<port>        " + _("Listen for JSON-RPC connections on <port> (default: 15715 or testnet: 25715)") + "\n" +
         "  -rpcallowip=<ip>       " + _("Allow JSON-RPC connections from specified IP address") + "\n" +
         "  -rpcconnect=<ip>       " + _("Send commands to node running on <ip> (default: 127.0.0.1)") + "\n" +
+        "  -rpcthreads=<n>        " + _("Use this many threads to service RPC calls (default: 4)") + "\n" +
         "  -blocknotify=<cmd>     " + _("Execute command when the best block changes (%s in cmd is replaced by block hash)") + "\n" +
         "  -walletnotify=<cmd>    " + _("Execute command when a wallet transaction changes (%s in cmd is replaced by TxID)") + "\n" +
         "  -confchange            " + _("Require a confirmations for change (default: 0)") + "\n" +
+        "  -minimizecoinage       " + _("Minimize weight consumption (experimental) (default: 0)") + "\n" +
         "  -alertnotify=<cmd>     " + _("Execute command when a relevant alert is received (%s in cmd is replaced by message)") + "\n" +
         "  -upgradewallet         " + _("Upgrade wallet to latest format") + "\n" +
         "  -keypool=<n>           " + _("Set key pool size to <n> (default: 100)") + "\n" +
@@ -337,7 +374,7 @@ bool InitSanityCheck(void)
 /** Initialize bitcoin.
  *  @pre Parameters should be parsed and config file should be read.
  */
-bool AppInit2()
+bool AppInit2(boost::thread_group& threadGroup)
 {
     // ********************************************************* Step 1: setup
 #ifdef _MSC_VER
@@ -402,9 +439,6 @@ bool AppInit2()
     nDerivationMethodIndex = 0;
 
     fTestNet = GetBoolArg("-testnet");
-    if (fTestNet) {
-        SoftSetBoolArg("-irc", true);
-    }
 
     if (mapArgs.count("-bind")) {
         // when specifying an explicit binding address, you want to listen on it
@@ -449,12 +483,6 @@ bool AppInit2()
     else
         fDebugNet = GetBoolArg("-debugnet");
 
-#if !defined(WIN32) && !defined(QT_GUI)
-    fDaemon = GetBoolArg("-daemon");
-#else
-    fDaemon = false;
-#endif
-
     if (fDaemon)
         fServer = true;
     else
@@ -484,6 +512,7 @@ bool AppInit2()
     }
 
     fConfChange = GetBoolArg("-confchange", false);
+    fMinimizeCoinAge = GetBoolArg("-minimizecoinage", false);
 
     if (mapArgs.count("-mininput"))
     {
@@ -494,7 +523,7 @@ bool AppInit2()
     // ********************************************************* Step 4: application initialization: dir lock, daemonize, pidfile, debug log
     // Sanity check
     if (!InitSanityCheck())
-        return InitError(_("Initialization sanity check failed. VpnCoin is shutting down."));
+        return InitError(_("Initialization sanity check failed. VPNCoin is shutting down."));
 
     std::string strDataDir = GetDataDir().string();
     std::string strWalletFileName = GetArg("-wallet", "wallet.dat");
@@ -509,34 +538,12 @@ bool AppInit2()
     if (file) fclose(file);
     static boost::interprocess::file_lock lock(pathLockFile.string().c_str());
     if (!lock.try_lock())
-        return InitError(strprintf(_("Cannot obtain a lock on data directory %s.  VpnCoin is probably already running."), strDataDir.c_str()));
-
-#if !defined(WIN32) && !defined(QT_GUI)
-    if (fDaemon)
-    {
-        // Daemonize
-        pid_t pid = fork();
-        if (pid < 0)
-        {
-            fprintf(stderr, "Error: fork() returned %d errno %d\n", pid, errno);
-            return false;
-        }
-        if (pid > 0)
-        {
-            CreatePidFile(GetPidFile(), pid);
-            return true;
-        }
-
-        pid_t sid = setsid();
-        if (sid < 0)
-            fprintf(stderr, "Error: setsid() returned %d errno %d\n", sid, errno);
-    }
-#endif
+        return InitError(strprintf(_("Cannot obtain a lock on data directory %s.  VPNCoin is probably already running."), strDataDir.c_str()));
 
     if (GetBoolArg("-shrinkdebugfile", !fDebug))
         ShrinkDebugFile();
     printf("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
-    printf("VpnCoin version %s (%s)\n", FormatFullVersion().c_str(), CLIENT_DATE.c_str());
+    printf("VPNCoin version %s (%s)\n", FormatFullVersion().c_str(), CLIENT_DATE.c_str());
     printf("Using OpenSSL version %s\n", SSLeay_version(SSLEAY_VERSION));
     if (!fLogTimestamps)
         printf("Startup time: %s\n", DateTimeStrFormat("%x %H:%M:%S", GetTime()).c_str());
@@ -545,7 +552,7 @@ bool AppInit2()
     std::ostringstream strErrors;
 
     if (fDaemon)
-        fprintf(stdout, "VpnCoin server starting\n");
+        fprintf(stdout, "VPNCoin server starting\n");
 
     int64_t nStart;
 
@@ -577,7 +584,7 @@ bool AppInit2()
                                      " Original wallet.dat saved as wallet.{timestamp}.bak in %s; if"
                                      " your balance or transactions are incorrect you should"
                                      " restore from a backup."), strDataDir.c_str());
-            uiInterface.ThreadSafeMessageBox(msg, _("VpnCoin"), CClientUIInterface::OK | CClientUIInterface::ICON_EXCLAMATION | CClientUIInterface::MODAL);
+            uiInterface.ThreadSafeMessageBox(msg, _("VPNCoin"), CClientUIInterface::OK | CClientUIInterface::ICON_EXCLAMATION | CClientUIInterface::MODAL);
         }
         if (r == CDBEnv::RECOVER_FAIL)
             return InitError(_("wallet.dat corrupt, salvage failed"));
@@ -639,9 +646,6 @@ bool AppInit2()
     fNoListen = !GetBoolArg("-listen", true);
     fDiscover = GetBoolArg("-discover", true);
     fNameLookup = GetBoolArg("-dns", true);
-#ifdef USE_UPNP
-    fUseUPnP = GetBoolArg("-upnp", USE_UPNP);
-#endif
 
     bool fBound = false;
     if (!fNoListen)
@@ -758,16 +762,6 @@ bool AppInit2()
         return false;
     }
 
-    // ********************************************************* Testing Zerocoin
-
-
-    if (GetBoolArg("-zerotest", false))
-    {
-        printf("\n=== ZeroCoin tests start ===\n");
-        Test_RunAllTests();
-        printf("=== ZeroCoin tests end ===\n\n");
-    }
-
     // ********************************************************* Step 8: load wallet
 
     uiInterface.InitMessage(_("Loading wallet..."));
@@ -784,13 +778,13 @@ bool AppInit2()
         {
             string msg(_("Warning: error reading wallet.dat! All keys read correctly, but transaction data"
                          " or address book entries might be missing or incorrect."));
-            uiInterface.ThreadSafeMessageBox(msg, _("VpnCoin"), CClientUIInterface::OK | CClientUIInterface::ICON_EXCLAMATION | CClientUIInterface::MODAL);
+            uiInterface.ThreadSafeMessageBox(msg, _("VPNCoin"), CClientUIInterface::OK | CClientUIInterface::ICON_EXCLAMATION | CClientUIInterface::MODAL);
         }
         else if (nLoadWalletRet == DB_TOO_NEW)
-            strErrors << _("Error loading wallet.dat: Wallet requires newer version of VpnCoin") << "\n";
+            strErrors << _("Error loading wallet.dat: Wallet requires newer version of VPNCoin") << "\n";
         else if (nLoadWalletRet == DB_NEED_REWRITE)
         {
-            strErrors << _("Wallet needed to be rewritten: restart VpnCoin to complete") << "\n";
+            strErrors << _("Wallet needed to be rewritten: restart VPNCoin to complete") << "\n";
             printf("%s", strErrors.str().c_str());
             return InitError(strErrors.str());
         }
@@ -907,15 +901,10 @@ bool AppInit2()
     printf("mapWallet.size() = %"PRIszu"\n",       pwalletMain->mapWallet.size());
     printf("mapAddressBook.size() = %"PRIszu"\n",  pwalletMain->mapAddressBook.size());
 
-#ifdef WIN32
-	LoadIniCfg(1, 0);
-#endif	
-
-    if (!NewThread(StartNode, NULL))
-        InitError(_("Error: could not start node"));
+    StartNode(threadGroup);
 
     if (fServer)
-        NewThread(ThreadRPCServer, NULL);
+        StartRPCThreads();
 
     // ********************************************************* Step 12: finished
 
@@ -928,12 +917,8 @@ bool AppInit2()
      // Add wallet transactions that aren't already in a block to mapTransactions
     pwalletMain->ReacceptWalletTransactions();
 
-#if !defined(QT_GUI)
-    // Loop until process is exit()ed from shutdown() function,
-    // called from ThreadRPCServer thread when a "stop" command is received.
-    while (1)
-        MilliSleep(5000);
-#endif
+    // Run a thread to flush wallet periodically
+    threadGroup.create_thread(boost::bind(&ThreadFlushWalletDB, boost::ref(pwalletMain->strWalletFile)));
 
-    return true;
+    return !fRequestShutdown;
 }

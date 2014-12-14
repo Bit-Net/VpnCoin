@@ -184,7 +184,6 @@ HEADERS += src/qt/bitcoingui.h \
     src/walletdb.h \
     src/script.h \
     src/init.h \
-    src/irc.h \
     src/mruset.h \
     src/json/json_spirit_writer_template.h \
     src/json/json_spirit_writer.h \
@@ -201,6 +200,7 @@ HEADERS += src/qt/bitcoingui.h \
     src/qt/guiconstants.h \
     src/qt/optionsmodel.h \
     src/qt/monitoreddatamapper.h \
+    src/qt/trafficgraphwidget.h \
     src/qt/transactiondesc.h \
     src/qt/transactiondescdialog.h \
     src/qt/bitcoinamountfield.h \
@@ -220,18 +220,13 @@ HEADERS += src/qt/bitcoingui.h \
     src/qt/askpassphrasedialog.h \
     src/protocol.h \
     src/qt/notificator.h \
-    src/qt/qtipcserver.h \
     src/allocators.h \
     src/ui_interface.h \
     src/qt/rpcconsole.h \
     src/version.h \
     src/netbase.h \
-	src/vpnfunc.h \
-	src/vpntest.h \
     src/clientversion.h \
-    src/threadsafety.h \
-	src/qt/simplecrypt.h \
-    src/qt/splashscreen.h
+    src/threadsafety.h
 
 SOURCES += src/qt/bitcoin.cpp src/qt/bitcoingui.cpp \
     src/qt/transactiontablemodel.cpp \
@@ -256,7 +251,6 @@ SOURCES += src/qt/bitcoin.cpp src/qt/bitcoingui.cpp \
     src/miner.cpp \
     src/init.cpp \
     src/net.cpp \
-    src/irc.cpp \
     src/checkpoints.cpp \
     src/addrman.cpp \
     src/db.cpp \
@@ -266,6 +260,7 @@ SOURCES += src/qt/bitcoin.cpp src/qt/bitcoingui.cpp \
     src/qt/transactionrecord.cpp \
     src/qt/optionsmodel.cpp \
     src/qt/monitoreddatamapper.cpp \
+    src/qt/trafficgraphwidget.cpp \
     src/qt/transactiondesc.cpp \
     src/qt/transactiondescdialog.cpp \
     src/qt/bitcoinstrings.cpp \
@@ -292,7 +287,6 @@ SOURCES += src/qt/bitcoin.cpp src/qt/bitcoingui.cpp \
     src/qt/askpassphrasedialog.cpp \
     src/protocol.cpp \
     src/qt/notificator.cpp \
-    src/qt/qtipcserver.cpp \
     src/qt/rpcconsole.cpp \
     src/noui.cpp \
     src/kernel.cpp \
@@ -301,8 +295,6 @@ SOURCES += src/qt/bitcoin.cpp src/qt/bitcoingui.cpp \
     src/scrypt-x86_64.S \
     src/scrypt.cpp \
     src/pbkdf2.cpp \
-	src/vpnfunc.cpp \
-	src/vpntest.cpp \
     src/zerocoin/Accumulator.cpp \
     src/zerocoin/AccumulatorProofOfKnowledge.cpp \
     src/zerocoin/Coin.cpp \
@@ -312,9 +304,7 @@ SOURCES += src/qt/bitcoin.cpp src/qt/bitcoingui.cpp \
     src/zerocoin/Params.cpp \
     src/zerocoin/SerialNumberSignatureOfKnowledge.cpp \
     src/zerocoin/SpendMetaData.cpp \
-    src/zerocoin/ZeroTest.cpp \
-	src/qt/simplecrypt.cpp \
-	src/qt/splashscreen.cpp
+    src/zerocoin/ZeroTest.cpp
 
 
 RESOURCES += \
