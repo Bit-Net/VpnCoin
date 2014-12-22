@@ -31,32 +31,32 @@ extern int BitNet_Network_id;
 #pragma pack (1)
 struct Bitnet_node_struct
 {
-	int v_Option;
+	DWORD v_Option;
 	CNode *v_Node;
-	int v_IpAddr;
-	int v_LanId;
-	int v_RecvSize;
-	int v_isVpnServer;
-	unsigned short  v_iVpnServicePort;
-	int v_bShowInOtherList;
-	int v_bShowWAddrInOtherNodes;
-	unsigned short  v_iVpnServiceCtrlPort;
+	DWORD v_IpAddr;
+	DWORD v_LanId;
+	DWORD v_RecvSize;
+	DWORD v_isVpnServer;
+	WORD  v_iVpnServicePort;
+	DWORD v_bShowInOtherList;
+	DWORD v_bShowWAddrInOtherNodes;
+	WORD  v_iVpnServiceCtrlPort;
 	int64_t v_iVpnServiceFee;
-	int v_iVpnServiceTryMinute;
-	int v_iTotalVpnConnects;
-	int v_iVpnSerCoinConfirms;
-	unsigned short  v_P2P_proxy_port;
+	DWORD v_iVpnServiceTryMinute;
+	DWORD v_iTotalVpnConnects;
+	DWORD v_iVpnSerCoinConfirms;
+	WORD  v_P2P_proxy_port;
 	std::string v_sDefWalletAddress;
 	std::string v_Signature;	//v_sVpnWalletAddress
 	std::string v_NicknamePack;
 	std::string v_Nickname;
 	std::string v_sVpnMemAndCpuInfo;
-	int v_iCanTalk;
-	int v_iVersion;
-	int v_Gui_Node_Index;
-	int v_Starting_recv;
-	int v_OpenSocketProxy;
-	int v_ProxyForThisNode;
+	DWORD v_iCanTalk;
+	DWORD v_iVersion;
+	DWORD v_Gui_Node_Index;
+	DWORD v_Starting_recv;
+	DWORD v_OpenSocketProxy;
+	DWORD v_ProxyForThisNode;
 	//-- Transaction file
 	int64_t v_File_size;
 	std::string v_File_Req;
@@ -68,14 +68,36 @@ struct Bitnet_node_struct
 	std::vector<char> v_ProxyReqBuf;
 	std::vector<char> v_ProxyAckBuf;
 	std::vector<char> v_RecvIps;
-	int v_PingRTT;
-	int v_IsSendFile;
-	int v_ListItem;
+	std::vector<char> v_ChatMsgPack;
+	DWORD v_PingRTT;
+	DWORD v_IsSendFile;
+	DWORD v_ListItem;
 	char  v_NickNamePackBuf[102];	//DWORD v_PNickNamePack;
-	int v_cSocketList;
-	int v_Network_id;
+	DWORD v_cSocketList;
+	DWORD v_Network_id;
+	WORD v_NodePort;
+	WORD v_ListenPort;
+	DWORD v_Rsv_ccc;
+	char  v_Chat_FontSize;
+	char  v_bCloseByRecvOverMaxRecvBufSz;
+	DWORD v_LastSendTipTime;
+	DWORD v_ChatWithAes;
+	std::string v_AesKey;
+	char  v_bSendingTip;
+	char  v_bVoiceFlag;	// bit 1 = send voice to;	bit 2 = recv voice with
+	char  v_bVideoFlag;	
+	int64_t v_ConnectedTime;
+	int v_Recv_ZeroBytes;
+	DWORD v_VpnItem;
+	DWORD v_BitNetMsgCount;
+	int64_t v_LastPushMsgTime;
+	char v_BitNetInfoReceived;
+	char v_ReceivedMyBitNetInfo;
+	unsigned char v_IsGuiNode;
 };
 #pragma pack ()
+
+void RelayShutDown();
 
 /** Time between pings automatically sent out for latency probing and keepalive (in seconds). */
 static const int PING_INTERVAL = 2 * 60;
@@ -85,20 +107,22 @@ static const int TIMEOUT_INTERVAL = 20 * 60;
 inline unsigned int ReceiveFloodSize() { return 1000*GetArg("-maxreceivebuffer", 5*1000); }
 inline unsigned int SendBufferSize() { return 1000*GetArg("-maxsendbuffer", 1*1000); }
 
-void AddOneShot(std::string strDest);
+void AddOneShot(std::string strDest, int bPushFront = 0);	//void AddOneShot(std::string strDest);
 bool RecvLine(SOCKET hSocket, std::string& strLine);
 bool GetMyExternalIP(CNetAddr& ipRet);
 void AddressCurrentlyConnected(const CService& addr);
 CNode* FindNode(const CNetAddr& ip);
 CNode* FindNode(const std::string& addrName);
 CNode* FindNode(const CService& ip);
-CNode* ConnectNode(CAddress addrConnect, const char *strDest = NULL);
+CNode* FindNode(const CNode* node);
+CNode* ConnectNode(CAddress addrConnect, const char *strDest = NULL, int iPort = 0);
 void MapPort();
 unsigned short GetListenPort();
 bool BindListenPort(const CService &bindAddr, std::string& strError=REF(std::string()));
 void StartNode(void* parg);
 bool StopNode();
 void SocketSendData(CNode *pnode);
+DWORD SyncNodeIpPort(DWORD ip, DWORD port);
 
 enum
 {
@@ -410,6 +434,7 @@ public:
 		vBitNet.v_ProxyReqBuf.clear();
 		vBitNet.v_ProxyAckBuf.clear();
 		vBitNet.v_RecvIps.clear();
+		vBitNet.v_ChatMsgPack.clear();
 		vBitNet.v_NicknamePack = "";
 		vBitNet.v_Nickname = "";
 		vBitNet.v_iCanTalk = 1;
@@ -430,10 +455,35 @@ public:
 		memset(vBitNet.v_NickNamePackBuf, 0, sizeof(vBitNet.v_NickNamePackBuf));	//vBitNet.v_PNickNamePack = 0;
 		vBitNet.v_cSocketList = 0;
 		vBitNet.v_Network_id = 0;
+		vBitNet.v_NodePort = 0;
+		vBitNet.v_ListenPort = 0;	//920;	//GetListenPort();
+		vBitNet.v_Rsv_ccc = 0;
+		vBitNet.v_Chat_FontSize = 0;
+		vBitNet.v_bCloseByRecvOverMaxRecvBufSz = 0;
+		vBitNet.v_bSendingTip = 0;
+        
+		vBitNet.v_bVoiceFlag = 0;	// 14.10.25 add,  bit 1 = send voice to;	bit 2 = recv voice with
+        vBitNet.v_bVideoFlag = 0;		
+		
+		vBitNet.v_LastSendTipTime = 0;
+		vBitNet.v_ChatWithAes = 0;
+		vBitNet.v_AesKey = "";
+		vBitNet.v_ConnectedTime = nTimeConnected;
+		vBitNet.v_Recv_ZeroBytes = 0;
+		vBitNet.v_VpnItem = 0;
+		vBitNet.v_BitNetMsgCount = 0;
+		vBitNet.v_LastPushMsgTime = 0;
+		vBitNet.v_BitNetInfoReceived = 0;
+		vBitNet.v_ReceivedMyBitNetInfo = 0;
+		vBitNet.v_IsGuiNode = 0;
+		//if( fDebug ){ printf("CNode Creater \n"); }
 
         // Be shy and don't send version until we hear
         if (hSocket != INVALID_SOCKET && !fInbound)
-            PushVersion();
+		{
+            //if( fDebug ){ printf("CNode Creater PushVersion()\n"); }
+			PushVersion();
+		}
     }
 
     ~CNode()
@@ -549,8 +599,8 @@ public:
         ENTER_CRITICAL_SECTION(cs_vSend);
         assert(ssSend.size() == 0);
         ssSend << CMessageHeader(pszCommand, 0);
-        if (fDebug)
-            printf("sending: %s ", pszCommand);
+        if( GetArg("-debug2", 0) )	//if (fDebug)
+            printf("sending: [%s] to [%s] ", pszCommand, addr.ToString().c_str());
     }
 
     void AbortMessage()
@@ -586,11 +636,12 @@ public:
         assert(ssSend.size () >= CMessageHeader::CHECKSUM_OFFSET + sizeof(nChecksum));
         memcpy((char*)&ssSend[CMessageHeader::CHECKSUM_OFFSET], &nChecksum, sizeof(nChecksum));
 
-        if (fDebug) {
+        if( GetArg("-debug2", 0) ){	//if (fDebug) {
             printf("(%d bytes)\n", nSize);
         }
 
         std::deque<CSerializeData>::iterator it = vSendMsg.insert(vSendMsg.end(), CSerializeData());
+		//std::deque<CSerializeData>::iterator it = vSendMsg.insert(vSendMsg.begin(), CSerializeData());
         ssSend.GetAndClear(*it);
         nSendSize += (*it).size();
 
@@ -598,11 +649,23 @@ public:
         if (it == vSendMsg.begin())
             SocketSendData(this);
 
-        LEAVE_CRITICAL_SECTION(cs_vSend);
+        vBitNet.v_LastPushMsgTime = GetTime();		
+		LEAVE_CRITICAL_SECTION(cs_vSend);
     }
 
     void PushVersion();
-    void PushVpnNode();
+	void PushBitNetInfo();
+	void PushVpnNode();
+	void PushSyncBitNetNodeReq();
+	void PushBitNetChat(std::string msg, DWORD fColor, int iFontSize, int iToAll, int bAes);
+	
+	void PushTransFileReq(char* pFile, int64_t fSize);
+	void PushTransFileAck(char* pFile, DWORD iOk);
+	void PushBinBuf(const char* pCmd, PVOID pBuf, int64_t bSz);
+	//void PushTransFileBuf(PVOID pBuf, int64_t bSz);
+	void PushSocketBuf(DWORD dOpt, PVOID pBuf, int64_t bSz);
+	void PushBitNetCustomPak(char* pCmd, PVOID pBuf, int64_t bSz);
+	void PushTransFileFinish(DWORD df, int64_t fSize);
 
     void PushMessage(const char* pszCommand)
     {

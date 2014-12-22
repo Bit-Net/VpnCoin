@@ -349,7 +349,8 @@ bool AppInit2()
     // Disable confusing "helpful" text message on abort, Ctrl-C
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
 #endif
-#ifdef WIN32
+
+/* #ifdef WIN32
     // Enable Data Execution Prevention (DEP)
     // Minimum supported OS versions: WinXP SP3, WinVista >= SP1, Win Server 2008
     // A failure is non-critical and needs no further attention!
@@ -361,7 +362,8 @@ bool AppInit2()
     typedef BOOL (WINAPI *PSETPROCDEPPOL)(DWORD);
     PSETPROCDEPPOL setProcDEPPol = (PSETPROCDEPPOL)GetProcAddress(GetModuleHandleA("Kernel32.dll"), "SetProcessDEPPolicy");
     if (setProcDEPPol != NULL) setProcDEPPol(PROCESS_DEP_ENABLE);
-#endif
+#endif */
+
 #ifndef WIN32
     umask(077);
 
@@ -907,7 +909,7 @@ bool AppInit2()
     printf("mapWallet.size() = %"PRIszu"\n",       pwalletMain->mapWallet.size());
     printf("mapAddressBook.size() = %"PRIszu"\n",  pwalletMain->mapAddressBook.size());
 
-#ifdef WIN32
+#ifdef USE_BITNET
 	LoadIniCfg(1, 0);
 #endif	
 

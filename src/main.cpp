@@ -45,7 +45,7 @@ unsigned int nStakeMinAge = 8 * 60 * 60; // 8 hours
 unsigned int nStakeMaxAge = -1; // unlimited
 unsigned int nModifierInterval = 10 * 60; // time to elapse before new modifier is computed
 
-int nCoinbaseMaturity = 100;
+int nCoinbaseMaturity = 100;	//int nCoinbaseMaturity = 500;
 CBlockIndex* pindexGenesisBlock = NULL;
 int nBestHeight = -1;
 
@@ -76,16 +76,17 @@ int64_t nReserveBalance = 0;
 int64_t nMinimumInputValue = 0;
 extern enum Checkpoints::CPMode CheckpointsMode;
 
-extern int AddNodeIp(int dAddr, int bAdd);
-extern int SyncNodeIps(vector<int> &vIps);
-#ifdef WIN32
+//extern int AddOrRemoveNodeIpAndPort(CNode* node, unsigned short sPort, int bAdd);
+extern DWORD SyncNodeIps(vector<int> &vIps);
+
+#ifdef USE_BITNET
 extern std::string sDefWalletAddress;
-extern int d_Vpn_LanID;
-extern int dUseChat;
+extern DWORD d_Vpn_LanID;
+extern DWORD dUseChat;
 extern int dStartVpnClient;
-extern int bShowInOtherList;
-extern int dStartVpnServer;
-extern int SynNodeToVpnGui(CNode* node, DWORD bAdd, DWORD dRecvSize, const char* pTalk);
+extern DWORD bShowInOtherList;
+extern DWORD dStartVpnServer;
+extern DWORD SynNodeToBitNetGui(CNode* node, DWORD bAdd, DWORD dRecvSize, const char* pTalk);
 #endif
 //////////////////////////////////////////////////////////////////////////////
 //
@@ -2594,13 +2595,14 @@ bool LoadBlockIndex(bool fAllowNew)
 
         const char* pszTimestamp = "Thu, 4 Sep 2014 12:00:00 GMT"; 
         CTransaction txNew;
-        txNew.nTime = 1409832000;
+        txNew.nTime = 1409832000;	//1393221600;
 		if (fTestNet){ 
 			txNew.nTime = 1405999999; 
 			pszTimestamp = "Mon, 22 Jul 2014 11:33:19 GMT";
 		}
         txNew.vin.resize(1);
         txNew.vout.resize(1);
+        //txNew.vin[0].scriptSig = CScript() << 0 << CBigNum(42) << vector<unsigned char>((const unsigned char*)pszTimestamp, (const unsigned char*)pszTimestamp + strlen(pszTimestamp));
 		txNew.vin[0].scriptSig = CScript() << 486604799 << CBigNum(4) << vector<unsigned char>((const unsigned char*)pszTimestamp, (const unsigned char*)pszTimestamp + strlen(pszTimestamp)); 
         txNew.vout[0].SetEmpty();
         CBlock block;
@@ -2608,9 +2610,9 @@ bool LoadBlockIndex(bool fAllowNew)
         block.hashPrevBlock = 0;
         block.hashMerkleRoot = block.BuildMerkleTree();
         block.nVersion = 1;
-        block.nTime    = 1409832000;
+        block.nTime    = 1409832000;	//1393221600;
         block.nBits    = bnProofOfWorkLimit.GetCompact();
-        block.nNonce   = 111224;
+        block.nNonce   = 111224;	//!fTestNet ? 164482 : 216178;
 		
 		if (fTestNet)
 		{
@@ -2625,12 +2627,12 @@ bool LoadBlockIndex(bool fAllowNew)
         printf("block.hashMerkleRoot =%s\n", block.hashMerkleRoot.ToString().c_str());
 		
 		if (fTestNet){
-            assert(block.hashMerkleRoot == uint256("0x23de3a1724ab2c7193f4d0ff6cf1d5b745db9dc0af7fc796db9b3494da42a7c9"));
+			assert(block.hashMerkleRoot == uint256("0x23de3a1724ab2c7193f4d0ff6cf1d5b745db9dc0af7fc796db9b3494da42a7c9"));	//uint256("0x12630d16a97f24b287c8c2594dda5fb98c9e6c70fc61d44191931ea2aa08dc90"));
 		}else{
-            assert(block.hashMerkleRoot == uint256("0x698a93a1cacd495a7a4fb3864ad8d06ed4421dedbc57f9aaad733ea53b1b5828"));
+			assert(block.hashMerkleRoot == uint256("0x698a93a1cacd495a7a4fb3864ad8d06ed4421dedbc57f9aaad733ea53b1b5828"));	//uint256("0x12630d16a97f24b287c8c2594dda5fb98c9e6c70fc61d44191931ea2aa08dc90"));
 		}
         block.print();
-
+		
         assert(block.GetHash() == (!fTestNet ? hashGenesisBlock : hashGenesisBlockTestNet));
         assert(block.CheckBlock());
 
@@ -2902,11 +2904,14 @@ unsigned char pchMessageStart[4] = { 0xfb, 0xc0, 0xb6, 0xdb };
 
 bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, int64_t nTimeReceived)
 {
-    int dRecvSize = vRecv.size();
+    DWORD dRecvSize = vRecv.size();
 	static map<CService, CPubKey> mapReuseKey;
     RandAddSeedPerfmon();
-    if (fDebug)
-        printf("received: %s (%"PRIszu" bytes)\n", strCommand.c_str(), vRecv.size());
+    
+#ifdef USE_BITNET
+	if (fDebug)	//if( GetArg("-debug2", 0) )
+        printf("received: %s (%"PRIszu" bytes), %s\n", strCommand.c_str(), vRecv.size(), pfrom->addr.ToString().c_str());
+#endif
     if (mapArgs.count("-dropmessagestest") && GetRand(atoi(mapArgs["-dropmessagestest"])) == 0)
     {
         printf("dropmessagestest DROPPING RECV MESSAGE\n");
@@ -2915,16 +2920,19 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 
     if (strCommand == "getver")
 	{
-		pfrom->PushVersion(); 
+        if( pfrom->vBitNet.v_ReceivedMyBitNetInfo == 0 ) //if (pfrom->nVersion == 0){ 
+		{
+			pfrom->PushVersion(); 
+		}
 		return true;
-	}	
-    else if (strCommand == "version")
+	}
+	else if (strCommand == "version")
     {
         // Each connection can only send one version message
         if (pfrom->nVersion != 0)
         {
             //pfrom->Misbehaving(1);
-            return true;
+            return true;	//return false;
         }
 
         int64_t nTime;
@@ -2950,26 +2958,59 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         if (!vRecv.empty())
             vRecv >> pfrom->nStartingHeight;
 			
+#ifdef USE_BITNET			
 		int iVer = 0;	
-        try {
-            //if (!vRecv.empty()){ vRecv >> iVer; }
+		try {
 			vRecv >> iVer;
-            pfrom->vBitNet.v_iVersion = iVer;
-            vRecv >> pfrom->vBitNet.v_Network_id;
+			//if (!vRecv.empty()){ vRecv >> iVer; }
+			pfrom->vBitNet.v_iVersion = iVer;
+			vRecv >> pfrom->vBitNet.v_Network_id;
+			if (!vRecv.empty()){ vRecv >> pfrom->vBitNet.v_ListenPort; }
+			if (!vRecv.empty()){ vRecv >> pfrom->vBitNet.v_IsGuiNode; }	//-- 2014.12.18 add
+
+//--2014.11.10 begin			
+/*		if( iVer >= 1121 ) 
+        {
+#ifdef USE_BITNET		
+		//if( pfrom->vBitNet.v_BitNetMsgCount == 0 ){
+		if( fDebug ){ printf("node %s ver = %d, new version cmd\n", pfrom->addr.ToString().c_str(), iVer); }
+		vRecv >> pfrom->vBitNet.v_bShowInOtherList >> pfrom->vBitNet.v_isVpnServer >> pfrom->vBitNet.v_iVpnServiceCtrlPort >> pfrom->vBitNet.v_iVpnServicePort >> pfrom->vBitNet.v_iVpnServiceFee;
+		//vRecv >> pfrom->v_iVpnServiceTryMinute >> pfrom->v_sDefWalletAddress >> pfrom->v_sVpnWalletAddress >> pfrom->v_Nickname;	// ver 1105
+		vRecv >> pfrom->vBitNet.v_iVpnServiceTryMinute >> pfrom->vBitNet.v_sDefWalletAddress >> pfrom->vBitNet.v_Signature >> pfrom->vBitNet.v_NicknamePack;	// ver 1106
+		vRecv >> pfrom->vBitNet.v_sVpnMemAndCpuInfo >> pfrom->vBitNet.v_iVpnSerCoinConfirms >> pfrom->vBitNet.v_iTotalVpnConnects; 
+		if (!vRecv.empty()){ vRecv >> pfrom->vBitNet.v_LanId; }
+		if (!vRecv.empty()){ vRecv >> pfrom->vBitNet.v_OpenSocketProxy; }
+		vRecv >> pfrom->vBitNet.v_P2P_proxy_port;
+		//pfrom->vBitNet.v_BitNetMsgCount = pfrom->vBitNet.v_BitNetMsgCount | 2;
+		if( pfrom->vBitNet.v_bShowInOtherList )
+		{
+			DWORD iRzt = SynNodeToBitNetGui(pfrom, 1, dRecvSize, NULL);
+			if( fDebug ){ printf("SynNodeToBitNetGui rzt =%u, %u\n", iRzt, pfrom->fDisconnect); }
+			if( iRzt == 2 )
+			{
+				if( fDebug ){ printf("node %s duplicate connected; disconnecting 2\n", pfrom->addr.ToString().c_str()); }
+				pfrom->fDisconnect = true;
+				return true;
+			}
+		}
+#endif		
+        } */
+//--2014.11.10 end
+		
 		} catch (std::exception& e)
 		{
+			if( iVer == 0 ){ pfrom->vBitNet.v_iVersion = 1; }
+			if( iVer == 1112 ){ pfrom->vBitNet.v_Network_id = 1; }
 			string strE = string(e.what()); 
-            if( iVer == 1112 ){ pfrom->vBitNet.v_Network_id = 1; }
-            printf("ProcessMessage: except [%s], iVer =%u, %u\n", strE.c_str(), iVer, pfrom->vBitNet.v_Network_id);
-        }
-
-        if( iVer < 1112 ){
+			printf("ProcessMessage: except [%s], iVer =%u, %u\n", strE.c_str(), iVer, pfrom->vBitNet.v_Network_id);
+		}
+		if( iVer < 1112 ){
 			//pfrom->Misbehaving(1);
             printf("node %s using obsolete version %i(%i); disconnecting\n", pfrom->addr.ToString().c_str(), pfrom->nVersion, iVer);
             pfrom->fDisconnect = true;
 			return false;
 		}
-
+#endif
         if (pfrom->fInbound && addrMe.IsRoutable())
         {
             pfrom->addrLocal = addrMe;
@@ -2997,10 +3038,9 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         if (GetBoolArg("-synctime", true))
             AddTimeData(pfrom->addr, nTime);
 
-        // Change version
-        pfrom->PushMessage("verack");
-		//MilliSleep(10);
-        //pfrom->PushVpnInfo();
+		// Change version
+		pfrom->PushMessage("verack");	
+
         pfrom->ssSend.SetVersion(min(pfrom->nVersion, PROTOCOL_VERSION));
 
         if (!pfrom->fInbound)
@@ -3056,8 +3096,17 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 
         pfrom->fSuccessfullyConnected = true;
 
-        printf("receive version message: version %d, blocks=%d, us=%s, them=%s, peer=%s, Network_id =%u\n", pfrom->nVersion, pfrom->nStartingHeight, addrMe.ToString().c_str(), addrFrom.ToString().c_str(), pfrom->addr.ToString().c_str(), pfrom->vBitNet.v_Network_id);
-
+#ifdef USE_BITNET
+        //unsigned short wPort = addrFrom.GetPort();
+		//if( wPort > 0 ){ pfrom->vBitNet.v_ListenPort = wPort; }
+		if( GetBoolArg("-autosyncnode", true) )
+		{
+			SynNodeToBitNetGui(pfrom, 9, 1, NULL);
+		}
+#endif
+		
+		printf("receive version message: version %d, Network-id=%d, BitVer=%d, blocks=%d, us=%s, them=%s, peer=%s, %u\n", pfrom->nVersion, pfrom->vBitNet.v_Network_id, pfrom->vBitNet.v_iVersion, pfrom->nStartingHeight, addrMe.ToString().c_str(), addrFrom.ToString().c_str(), pfrom->addr.ToString().c_str(), pfrom->vBitNet.v_ListenPort);
+		
         cPeerBlockCounts.input(pfrom->nStartingHeight);
 
         // ppcoin: ask for pending sync-checkpoint if any
@@ -3065,31 +3114,68 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             Checkpoints::AskForPendingSyncCheckpoint(pfrom);
     }
 
+
     else if (pfrom->nVersion == 0)
     {
-        // Must have a version message before anything else
-        //pfrom->Misbehaving(1);
-        //return false;
+        /* if( strCommand.find("BitNet-") == string::npos )
+		{
+			// Must have a version message before anything else
+			pfrom->Misbehaving(1);
+			return false;
+		} */
 		return true;
     }
 
-
+	else if (strCommand == "GetBitNetInf")	// warring: strCmd max lens = 12, can't be GetBitNetInfo
+	{ 
+#ifdef USE_BITNET
+		//if( fDebug ){ printf("receive [%s] GetBitNetInf Request, iVer =%d\n", pfrom->addr.ToString().c_str(), pfrom->vBitNet.v_iVersion); }
+		pfrom->PushBitNetInfo(); 
+#endif
+		return true; 
+	}
+	else if (strCommand == "BitNetInfAck")	//--2014.11.25 add
+	{ 
+		if( pfrom->vBitNet.v_ReceivedMyBitNetInfo == 0 ){ pfrom->vBitNet.v_ReceivedMyBitNetInfo++; } 
+		return true; 
+	}
     else if (strCommand == "verack")
     {
 		pfrom->SetRecvVersion(min(pfrom->nVersion, PROTOCOL_VERSION));
-#ifdef WIN32
-        pfrom->PushVpnInfo();
-		AddNodeIp(pfrom->vBitNet.v_IpAddr, 1);		
+#ifdef USE_BITNET
+		if( pfrom->vBitNet.v_BitNetInfoReceived == 0 )
+		{
+            if( pfrom->vBitNet.v_iVersion > 1119 ){	if( pfrom->vBitNet.v_ListenPort ){ pfrom->PushMessage("GetBitNetInf");} }
+		    else pfrom->PushBitNetInfo();		
+		}
+		//if( (pfrom->vBitNet.v_BitNetMsgCount & 2) == 0 )
+		{
+		    // AddNodeIp(pfrom->vBitNet.v_IpAddr, 1);
+		    //if( GetBoolArg("-autosyncnode", true) )
+		    //{
+			//    SynNodeToBitNetGui(pfrom, 9, 1, NULL);
+		    //}
+		}
+		//pfrom->vBitNet.v_BitNetMsgCount = pfrom->vBitNet.v_BitNetMsgCount | 1;
+		return true;
 #endif
     }
+	
 	else if (strCommand == "ShutDown")
 	{ 
-	    pfrom->CloseSocketDisconnect(); 
-		return true; 
+	    //if( fDebug ){ printf("[%s] %s\n", pfrom->addrName.c_str(), strCommand.c_str()); }
+		pfrom->fDisconnect = true;	//pfrom->CloseSocketDisconnect(); 
+		return false;	//true; 
 	}
+#ifdef USE_BITNET   // Bit_Lee
     else if( (strCommand == "vpn-1") || (strCommand == "BitNet-1") )
     {
-        int dShowInOtherList;
+        //pfrom->SetRecvVersion(min(pfrom->nVersion, PROTOCOL_VERSION));
+		//PushMessage("vpn-1", bShowInOtherList, isVpnServer, iVpnServiceCtrlPort, iVpnServicePort, iVpnServiceFee, iVpnServiceTryMinute, sVpnWalletAddress, GetTime());
+		//int64_t nTime;
+		//struct in_addr ip;
+		//pfrom->addr.GetInAddr(&ip);
+		DWORD dShowInOtherList;
 		try {
 		vRecv >> dShowInOtherList >> pfrom->vBitNet.v_isVpnServer >> pfrom->vBitNet.v_iVpnServiceCtrlPort >> pfrom->vBitNet.v_iVpnServicePort >> pfrom->vBitNet.v_iVpnServiceFee;
 		//vRecv >> pfrom->v_iVpnServiceTryMinute >> pfrom->v_sDefWalletAddress >> pfrom->v_sVpnWalletAddress >> pfrom->v_Nickname;	// ver 1105
@@ -3098,7 +3184,10 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 		if (!vRecv.empty()){ vRecv >> pfrom->vBitNet.v_LanId; }
 		if (!vRecv.empty()){ vRecv >> pfrom->vBitNet.v_OpenSocketProxy; }
 		vRecv >> pfrom->vBitNet.v_P2P_proxy_port;
-		if (!vRecv.empty()){ vRecv >> pfrom->vBitNet.v_iVersion; }
+		//if (!vRecv.empty()){ vRecv >> pfrom->vBitNet.v_ListenPort; }
+		pfrom->vBitNet.v_BitNetMsgCount = pfrom->vBitNet.v_BitNetMsgCount | 2;
+		if( pfrom->vBitNet.v_BitNetInfoReceived == 0 ){ pfrom->vBitNet.v_BitNetInfoReceived++; }
+		if( pfrom->vBitNet.v_iVersion > 1119 ){ pfrom->PushMessage("BitNetInfAck"); }	//-- 2014.11.25 add
 		} catch (std::exception& e)
 		{
 			string strE = string(e.what()); 
@@ -3108,57 +3197,244 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             pfrom->fDisconnect = true;
 			return false;
 		}
+		if( GetArg("-debug2", 0) ){ 
+			//printf("receive vpn msg-1: ip=%X, lanid=%X, OpenSocketProxy=%u, bShowInOtherList %d, isVpnServer=%d, DefWAddr=[%s] sVpnWAddress=[%s], Nickname=%s, Fee=%I64u\n", pfrom->sAddr, pfrom->v_LanId, pfrom->v_OpenSocketProxy, pfrom->v_bShowInOtherList, pfrom->v_isVpnServer, pfrom->v_sDefWalletAddress.c_str(), pfrom->v_sVpnWalletAddress.c_str(), pfrom->v_NicknamePack.c_str(), pfrom->v_iVpnServiceFee);
+			printf("receive BitNet msg-1: bShowInOtherList %d, isVpnServer=%d, DefWAddr=[%s] Signature=[%s], NicknamePak=%s, Fee=%I64u, %u\n", pfrom->vBitNet.v_bShowInOtherList, pfrom->vBitNet.v_isVpnServer, pfrom->vBitNet.v_sDefWalletAddress.c_str(), pfrom->vBitNet.v_Signature.c_str(), pfrom->vBitNet.v_NicknamePack.c_str(), pfrom->vBitNet.v_iVpnServiceFee, pfrom->vBitNet.v_ListenPort);
+			//pfrom->vBitNet.v_RemoteFileBuf.resize(pfrom->vBitNet.v_sDefWalletAddress.size());
+			//pfrom->vBitNet.v_RemoteFileBuf.assign(pfrom->vBitNet.v_sDefWalletAddress.begin(), pfrom->vBitNet.v_sDefWalletAddress.end());
+			//printf("pfrom->v_NicknamePack =%x, RemoteFileBuf =%x\n", &pfrom->vBitNet.v_NicknamePack, &pfrom->vBitNet.v_RemoteFileBuf);
+		}
 
-#ifdef WIN32		
+		if( pfrom->vBitNet.v_sDefWalletAddress.length() > 30 )
+		{
+			if( pfrom->vBitNet.v_sDefWalletAddress != sDefWalletAddress )
+			{
+				/* if( GetBoolArg("-autosyncnode", true) )
+				{
+					pfrom->PushVpnNode();
+				} */
+			}//else if( (pfrom->vBitNet.v_LanId > 0) && (pfrom->vBitNet.v_LanId == d_Vpn_LanID) )	// self
+			else{
+				if( fDebug ){ printf("connected to self at %s, disconnecting\n", pfrom->addr.ToString().c_str()); }
+				//pfrom->CloseSocketDisconnect();	
+				pfrom->fDisconnect = true;
+				return false;	//true;
+			}
+		}
 		if( dUseChat || dStartVpnClient || dStartVpnServer )
 		{
 			if( pfrom->vBitNet.v_isVpnServer ){ dShowInOtherList = 1; }
 			if( (pfrom->vBitNet.v_bShowInOtherList) && (!dShowInOtherList) )
 			{
-				SynNodeToVpnGui(pfrom, 0, 0, NULL);
+				if( pfrom->vBitNet.v_ListItem ){ SynNodeToBitNetGui(pfrom, 0, 0, NULL); }
 			}
 			pfrom->vBitNet.v_bShowInOtherList = dShowInOtherList;
 			if( pfrom->vBitNet.v_bShowInOtherList )
-				if( SynNodeToVpnGui(pfrom, 1, dRecvSize, NULL) == 2 )
+			{
+				DWORD iRzt = SynNodeToBitNetGui(pfrom, 1, dRecvSize, NULL);
+				//if( fDebug ){ printf("[%s] SynNodeToBitNetGui rzt =%u, %u, dShowInOtherList =%u\n", pfrom->vBitNet.v_Nickname.c_str(), iRzt, pfrom->fDisconnect, pfrom->vBitNet.v_bShowInOtherList); }
+				if( iRzt == 2 )
 				{
-					printf("node %s duplicate connected; disconnecting\n", pfrom->addr.ToString().c_str());
+					if( fDebug ){ printf("node %s duplicate connected; disconnecting\n", pfrom->addr.ToString().c_str()); }
 					pfrom->fDisconnect = true;
+					return false;	//true;
 				}
+			}
 		}
-#endif
+		
+		if( GetArg("-autosyncnode", 1) )
+		{
+			pfrom->PushSyncBitNetNodeReq();
+		}
+		return true;
+	}	
+	else if( (strCommand == "vpn-c") || (strCommand == "BitNet-c") )	// chat
+	{
+		std::string s= "";	//"nil";
+		if( pfrom->vBitNet.v_iVersion < 1117 ){ s.clear(); vRecv >> s; }
+		else{ 
+			pfrom->vBitNet.v_ChatMsgPack.clear();
+			//std::vector<char>(pfrom->vBitNet.v_ChatMsgPack).swap(pfrom->vBitNet.v_ChatMsgPack);
+			vRecv >> pfrom->vBitNet.v_ChatMsgPack;
+		}
+		//DWORD iToAll = 0;
+		/* 
+		if (!vRecv.empty()){ vRecv >> pfrom->vBitNet.v_Chat_FontSize; }
+		if (!vRecv.empty()){ vRecv >> pfrom->vBitNet.v_ChatColor; }
+		if (!vRecv.empty()){ vRecv >> iToAll; }
+		if (!vRecv.empty()){ vRecv >> pfrom->vBitNet.v_ChatWithAes; }
+		if( pfrom->vBitNet.v_ChatWithAes ){ iToAll = iToAll | 0x10; } */
+		
+		//vector<char> sMsg;
+		//vRecv >> sMsg;
+		//s = &sMsg[0];
+		//if( fDebug ){ printf("(Nickname=%s) Send [%s] to you\n", pfrom->vBitNet.v_Nickname.c_str(), s.c_str()); }
+		if( (dUseChat > 0) && (pfrom->vBitNet.v_iCanTalk > 0) && (pfrom->vBitNet.v_bShowInOtherList) )
+		{
+			//struct in_addr ip;
+			//pfrom->addr.GetInAddr(&ip);
+			//printf("receive vpn talk: %s, Nickname= %s, ip=%X,\n", s.c_str(), pfrom->v_Nickname.c_str(), ip.s_addr);
+			pfrom->vBitNet.v_sTalkMsg.clear();
+			if( s.length() )
+			{
+				pfrom->vBitNet.v_sTalkMsg = s;
+			}
+			SynNodeToBitNetGui(pfrom, 2, dRecvSize, pfrom->vBitNet.v_sTalkMsg.c_str());
+		}
 		return true;
 	}
 	
-    else if( strCommand == "vpn-a" )	// vpn nodes address
+	else if( (strCommand == "vpn-fr") || (strCommand == "BitNet-fr") )	// B: Transaction file Req
 	{
-#ifdef WIN32		
-		int iii = GetArg("-autosyncnode", 0);
-        if( fDebug ){ printf("Recv sync ip:: autosyncnode=%d\n", iii); }
-		if( iii > 0 )
+		std::string s;
+		int64_t fz;
+		vRecv >> s >> fz;
+		if( fDebug ){ printf("receive BitNet send file Req: %s, %I64u\n", s.c_str(), fz); }
+		if( (dUseChat > 0) && (pfrom->vBitNet.v_iCanTalk > 0) && (pfrom->vBitNet.v_bShowInOtherList) )
 		{
-			int bNeedSync = 0;
+			pfrom->vBitNet.v_File_Req = s;
+			pfrom->vBitNet.v_File_size = fz;
+			if( pfrom->vBitNet.v_File_size ){
+				SynNodeToBitNetGui(pfrom, 3, dRecvSize, NULL);	//pfrom->v_File_Req.c_str());	// file req
+			}
+		}
+		return true;
+	}
+
+	else if( (strCommand == "vpn-fa") || (strCommand == "BitNet-fa") )	// A: Transaction file ACK
+	{
+		DWORD iOk;
+		vRecv >> iOk;
+		if( fDebug ){ printf("receive BitNet send file Ack: %u\n", iOk); }
+		if( (dUseChat > 0) && (pfrom->vBitNet.v_iCanTalk > 0) )
+		{
+			SynNodeToBitNetGui(pfrom, 4, iOk, NULL);	// file ack
+			if( iOk == 0 )
+			{
+				pfrom->vBitNet.v_File_size = 0; 
+				pfrom->vBitNet.v_File_Loc.clear();
+			}
+		}
+		else{ 
+			pfrom->vBitNet.v_File_size = 0; 
+			pfrom->vBitNet.v_File_Loc.clear();	//std::string();
+		}
+		return true;
+	}
+
+	else if( (strCommand == "vpn-fb") || (strCommand == "BitNet-fb") )	// B: Transaction file buf
+	{
+		if( fDebug ){ printf("receive BitNet file buf, size=%u\n", dRecvSize); }
+		if( (pfrom->vBitNet.v_File_size) && (pfrom->vBitNet.v_File_Loc.length() > 3) )
+		{
+			if( (dUseChat > 0) && (pfrom->vBitNet.v_iCanTalk > 0) )
+			{
+				//std::vector<unsigned char> vchKey;
+				//vector<char> vchKey;
+				pfrom->vBitNet.v_RemoteFileBuf.clear();
+				std::vector<char>(pfrom->vBitNet.v_RemoteFileBuf).swap(pfrom->vBitNet.v_RemoteFileBuf);
+				vRecv >> pfrom->vBitNet.v_RemoteFileBuf;	//vRecv >> vchKey;
+				//void* pBuf = malloc(pfrom->v_File_size);
+				SynNodeToBitNetGui(pfrom, 5, dRecvSize, (const char*)&pfrom->vBitNet.v_RemoteFileBuf[0]);	// file buf
+				/*pfrom->PushTransFileFinish(0, pfrom->v_File_size);
+				pfrom->v_File_size = 0;
+				pfrom->v_File_Loc.clear();
+				pfrom->v_File_Req.clear();*/
+			}
+		}
+		pfrom->vBitNet.v_Starting_recv = 0;
+		return true;
+	}
+	
+	else if( (strCommand == "vpn-fc") || (strCommand == "BitNet-fc") )	// A: Transaction file Finish
+	{
+		int64_t iFz;
+		vRecv >> iFz;
+		if( fDebug ){ printf("receive vpn send file Finish: %I64u\n", iFz); }
+		pfrom->vBitNet.v_File_size = 0;
+		pfrom->vBitNet.v_File_Loc.clear();	//std::string();
+		SynNodeToBitNetGui(pfrom, 6, iFz, NULL);	// send file finish
+		return true;
+	}
+	
+	else if( (strCommand == "vpn-pR") || (strCommand == "BitNet-pR") )	// A: socket buf REQ
+	{
+		if( fDebug ){ printf("receive proxy Req buf, size=%u\n", dRecvSize); }
+		if( pfrom->vBitNet.v_bShowInOtherList > 0 )	//if( (pfrom->v_bShowInOtherList > 0) && pfrom->v_OpenSocketProxy > 0 )
+		{
+			//std::vector<unsigned char> vchKey;
+			//vector<char> vchKey;
+			pfrom->vBitNet.v_ProxyReqBuf.clear();
+			vRecv >> pfrom->vBitNet.v_ProxyReqBuf;	//vchKey;
+			SynNodeToBitNetGui(pfrom, 7, dRecvSize, (const char*)&pfrom->vBitNet.v_ProxyReqBuf[0]);	// socket buf
+		}
+		return true;
+	}
+	else if( (strCommand == "vpn-pA") || (strCommand == "BitNet-pA") )	// B: socket buf ACK
+	{
+		if( fDebug ){ printf("receive proxy Ack buf, size=%u\n", dRecvSize); }
+		if( pfrom->vBitNet.v_bShowInOtherList > 0 )	
+		{
+			//std::vector<unsigned char> vchKey;
+			//vector<char> vchKey;
+			pfrom->vBitNet.v_ProxyAckBuf.clear();
+			vRecv >> pfrom->vBitNet.v_ProxyAckBuf;	//vchKey;
+			SynNodeToBitNetGui(pfrom, 8, dRecvSize, (const char*)&pfrom->vBitNet.v_ProxyAckBuf[0]);	// socket buf
+		}
+		return true;
+	}
+    else if( (strCommand == "BitNet-AR") )	// Req BitNet nodes Sync
+	{
+		//if( GetArg("-autorelaynode", 1) )
+		{
+			int nId, iVer;
+			vRecv >> nId >> iVer;
+			//if( fDebug ){ printf("Recv sync node req:: Network_id=%d, Ver %d\n", nId, iVer); }
+			if( GetArg("-autorelaynode", 1) )	//if( GetArg("-autosyncnode", 1) )
+			{
+				//PushMessage("BitNet-AR", BitNet_Network_id, BitNet_Version);
+				SynNodeToBitNetGui(pfrom, 10, dRecvSize, NULL);
+			}
+		}
+		return true;
+	}
+	else if( (strCommand == "BitNet-AA") )	// Sync BitNet Nodes address Ack
+	{
+		int iii = GetArg("-autosyncnode", 1);
+		//if( fDebug ){ printf("Recv sync ip:: autosyncnode=%d\n", iii); }
+		if( (iii > 0) && ( GetArg("-isseednode", 0) == 0 ) )
+		{
+			//int bNeedSync = 0;
 			int64_t nTm = GetTime();
-			if( pfrom->vBitNet.v_SyncNodeIpsTime == 0 ){ bNeedSync++; }
-			else if( (nTm > pfrom->vBitNet.v_SyncNodeIpsTime) && ((nTm - pfrom->vBitNet.v_SyncNodeIpsTime) >= 360) ){
+			/* if( pfrom->vBitNet.v_SyncNodeIpsTime == 0 ){ bNeedSync++; }
+			else if( (nTm > pfrom->vBitNet.v_SyncNodeIpsTime) && ((nTm - pfrom->vBitNet.v_SyncNodeIpsTime) >= GetArg("-syncnodeinterval", 6)) ){
 				bNeedSync++;
 			}
 			if( fDebug ){ printf("Recv sync ip:: nTm=%I64u vs %I64u, NeedSync=%d\n", nTm, pfrom->vBitNet.v_SyncNodeIpsTime, bNeedSync); }
-			if( bNeedSync > 0 )
+			if( bNeedSync > 0 ) */
 			{
-				vector<int> vIps;
-				vRecv >> vIps;
-                int d = vIps.size();
-				if( fDebug ){ printf("Recv sync ip:: Count=%d\n", d); }
-				if( d > 0 )
+				if( dRecvSize > 8 )
 				{
 					pfrom->vBitNet.v_SyncNodeIpsTime = nTm;
-					SyncNodeIps(vIps);
+					pfrom->vBitNet.v_RecvIps.clear();
+					//std::vector<char>(pfrom->vBitNet.v_RecvIps).swap(pfrom->vBitNet.v_RecvIps);
+					vRecv >> pfrom->vBitNet.v_RecvIps;
+					//vector<int> vIps;
+					//vRecv >> vIps;
+					DWORD d = pfrom->vBitNet.v_RecvIps.size();
+					//if( fDebug ){ printf("Recv sync ip:: Count=%d\n", d); }
+					if( d > 0 )
+					{
+						//SyncNodeIps(vIps);
+						SynNodeToBitNetGui(pfrom, 11, dRecvSize, (const char*)&pfrom->vBitNet.v_RecvIps[0]);
+					}
 				}
 			}
 		}
-#endif		
 		return true;
 	}
+#endif
+
 	else if( pfrom->vBitNet.v_Network_id != BitNet_Network_id )
 	{ 
 		if( fDebug ){ printf("Node %s Network_id [%d] diff with [%d]\n", pfrom->addr.ToString().c_str(), pfrom->vBitNet.v_Network_id, BitNet_Network_id); }
@@ -3227,8 +3503,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         addrman.Add(vAddrOk, pfrom->addr, 2 * 60 * 60);
         if (vAddr.size() < 1000)
             pfrom->fGetAddr = false;
-        if (pfrom->fOneShot)
-            pfrom->fDisconnect = true;
+        //if (pfrom->fOneShot)
+        //    pfrom->fDisconnect = true;
     }
 
     else if (strCommand == "inv")
@@ -3786,31 +4062,17 @@ bool ProcessMessages(CNode* pfrom)
         {
             printf("ProcessMessages(%s, %u bytes) : CHECKSUM ERROR nChecksum=%08x hdr.nChecksum=%08x\n",
                strCommand.c_str(), nMessageSize, nChecksum, hdr.nChecksum);
-            if( GetArg("-checksum", 1) ){ continue; }
+#ifndef USE_BITNET
+            if( GetArg("-hdrchecksum", 1) ){ continue; }
+#endif
         }
 
         // Process message
         bool fRet = false;
         try
         {
-            {
-                int bgo = 1;
-                /* if( pfrom->nVersion )
-                {
-                    if( pfrom->vBitNet.v_Network_id != BitNet_Network_id )
-                    {
-                        if( strCommand.find("BitNet-") == string::npos ){ bgo = 0; }
-                    }
-                } */
-
-                if( bgo ){
-                    LOCK(cs_main);
-                    fRet = ProcessMessage(pfrom, strCommand, vRecv, msg.nTime);
-                }else if( fDebug ){
-                    //printf("ProcessMessages(%s, %u bytes), pfrom.network_id %u : %u,  nChecksum=%08x hdr.nChecksum=%08x\n",
-                    //    strCommand.c_str(), nMessageSize, pfrom->vBitNet.v_Network_id, BitNet_Network_id, nChecksum, hdr.nChecksum);
-                }
-            }
+            LOCK(cs_main);
+            fRet = ProcessMessage(pfrom, strCommand, vRecv, msg.nTime);
             if (fShutdown)
                 break;
         }
@@ -3856,6 +4118,12 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
         // Don't send anything until we get their version message
         if (pto->nVersion == 0)
             return true;
+
+//--2014.11.25 begin
+#ifdef USE_BITNET
+		if( ( (pto->vBitNet.v_iVersion > 1119) && (pto->vBitNet.v_ListenPort) ) && (pto->vBitNet.v_BitNetInfoReceived == 0) ){ pto->PushMessage("GetBitNetInf"); };
+#endif
+//--2014.11.25 end
 
         //
         // Message: ping
