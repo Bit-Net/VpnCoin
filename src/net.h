@@ -13,13 +13,14 @@
 
 #ifndef WIN32
 #include <arpa/inet.h>
+typedef unsigned int DWORD;
+typedef unsigned short WORD;
 #endif
 
 #include "mruset.h"
 #include "netbase.h"
 #include "protocol.h"
 #include "addrman.h"
-
 
 class CRequestTracker;
 class CNode;
