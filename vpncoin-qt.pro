@@ -226,8 +226,6 @@ HEADERS += src/qt/bitcoingui.h \
     src/qt/rpcconsole.h \
     src/version.h \
     src/netbase.h \
-	src/vpnfunc.h \
-	src/vpntest.h \
     src/clientversion.h \
     src/threadsafety.h \
 	src/qt/simplecrypt.h \
@@ -301,8 +299,6 @@ SOURCES += src/qt/bitcoin.cpp src/qt/bitcoingui.cpp \
     src/scrypt-x86_64.S \
     src/scrypt.cpp \
     src/pbkdf2.cpp \
-	src/vpnfunc.cpp \
-	src/vpntest.cpp \
     src/zerocoin/Accumulator.cpp \
     src/zerocoin/AccumulatorProofOfKnowledge.cpp \
     src/zerocoin/Coin.cpp \
