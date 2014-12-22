@@ -35,7 +35,7 @@ unsigned int nMinerSleep;
 bool fUseFastIndex;
 enum Checkpoints::CPMode CheckpointsMode;
 
-#ifdef WIN32
+#ifdef USE_BITNET
 extern void LoadIniCfg( DWORD bStart, DWORD dRelay );
 #endif
 

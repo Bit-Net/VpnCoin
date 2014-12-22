@@ -2958,7 +2958,6 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         if (!vRecv.empty())
             vRecv >> pfrom->nStartingHeight;
 			
-#ifdef USE_BITNET			
 		int iVer = 0;	
 		try {
 			vRecv >> iVer;
@@ -3010,7 +3009,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             pfrom->fDisconnect = true;
 			return false;
 		}
-#endif
+
         if (pfrom->fInbound && addrMe.IsRoutable())
         {
             pfrom->addrLocal = addrMe;

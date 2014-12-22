@@ -2014,7 +2014,7 @@ void MapPort()
 // Each pair gives a source name and a seed name.
 // The first name is used as information source for addrman.
 // The second name should resolve to a list of seed addresses.
-static const char *strDNSSeed[][2] = {
+static const char *strDNSSeed[][20] = {
     {"s1.vpncoin.org", "seed.vpncoin.org:920"},
     {"s2.vpncoin.org", "node.vpncoin.org:920"},
     {"s3.vpncoin.org", "pool.vpncoin.org:920"},
