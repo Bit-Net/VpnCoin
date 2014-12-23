@@ -13,8 +13,10 @@
 
 #ifndef WIN32
 #include <arpa/inet.h>
-typedef unsigned int DWORD;
+typedef unsigned long DWORD;
 typedef unsigned short WORD;
+typedef unsigned char BYTE;
+typedef void* PVOID;
 #endif
 
 #include "mruset.h"
