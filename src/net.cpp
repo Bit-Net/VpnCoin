@@ -81,7 +81,7 @@ CCriticalSection cs_setservAddNodeAddresses;
 
 static CSemaphore *semOutbound = NULL;
 
-int BitNet_Version = 1123;
+int BitNet_Version = 1124;
 int BitNet_Network_id = 1;  // VpnCoin = 1
 
 int GetTotalConnects()
@@ -931,6 +931,16 @@ void CNode::PushVersion()
 	this->ssSend << wPort;	//this->ssSend << BitNet_Network_id << wPort;
 	this->ssSend << bIsGui;
 	
+//2014.12.28 begin
+	unsigned short wCtPort = 0;
+	unsigned short wPrPort = 0;	
+#ifdef USE_BITNET
+	wCtPort = iVpnServiceCtrlPort;
+	wPrPort = d_P2P_proxy_port;
+#endif
+	this->ssSend << wCtPort;
+	this->ssSend << wPrPort;
+//2014.12.28 end	
 
 //--2014.11.10 begin	
 #ifdef USE_BITNET
@@ -2099,7 +2109,7 @@ void ThreadDNSAddressSeed2(void* parg)
 				char* pHost = (char*)&buf[0];
 				wPort = GetHostPort(pHost);
 
-				//if( fDebug ){ printf("Host [%s] Port [%d]\n", pHost, wPort); }
+				if( fDebug ){ printf("Host [%s] Port [%d]\n", pHost, wPort); }
                 if (LookupHost(pHost, vaddr))	 
 				//if (LookupHost(strDNSSeed[seed_idx][1], vaddr))
                 {
