@@ -11,9 +11,9 @@
 #include "addrman.h"
 #include "ui_interface.h"
 
-#ifdef USE_BITNET
+#ifdef WIN32
 #include <string.h>
-#include "bitnet.h"
+#include "vpnfunc.h"
 #endif
 
 #ifdef USE_UPNP
@@ -37,9 +37,8 @@ void ThreadMapPort2(void* parg);
 #endif
 void ThreadDNSAddressSeed2(void* parg);
 bool OpenNetworkConnection(const CAddress& addrConnect, CSemaphoreGrant *grantOutbound = NULL, const char *strDest = NULL, bool fOneShot = false);
-DWORD AddNodeIp(DWORD dAddr, int bAdd);
-//int AddOrRemoveNodeIpAndPort(CNode* node, unsigned short sPort, int bAdd);
-DWORD SyncNodeIps(vector<int> &vIps);
+int AddNodeIp(int dAddr, int bAdd);
+int SyncNodeIps(vector<int> &vIps);
 
 
 struct LocalServiceInfo {
@@ -81,7 +80,7 @@ CCriticalSection cs_setservAddNodeAddresses;
 
 static CSemaphore *semOutbound = NULL;
 
-int BitNet_Version = 1124;
+int BitNet_Version = 1115;
 int BitNet_Network_id = 1;  // VpnCoin = 1
 
 int GetTotalConnects()
@@ -90,41 +89,17 @@ int GetTotalConnects()
 	return vAllNodeIps.size();
 }
 
-DWORD GetHostPort(char* sHost)	//--2014.11.13 add
+int AddNodeIp(int dAddr, int bAdd)
 {
-    DWORD rzt = GetDefaultPort();
-	try{
-	char *ver = strstr(sHost, ":");
-    if (ver != NULL){
-        ver[0] = 0;	  ver++;
-		if( ver[0] > 0 ){ rzt = atoi(ver); }
-	}
-    }catch (std::exception& e) {
-		string strE = string(e.what()); 
-		printf("GetHostPort: except [%s]\n", strE.c_str());	
-        //PrintException(&e, "GetHostPort()");
-    } catch (...) {
-        PrintException(NULL, "GetHostPort()");
-    }	
-	return rzt;
-}
-
-//int AddOrRemoveNodeIpAndPort(CNode* node, unsigned short sPort, int bAdd)
-DWORD AddNodeIp(DWORD dAddr, int bAdd)
-{
-  DWORD rzt = 0;
+  int rzt = 0;
   if( GetBoolArg("-autosyncnode", true) )
   {
-	//DWORD dAddr = node->vBitNet.v_IpAddr;
-	//unsigned short iPort = sPort;
-	//if( iPort == 0 ){ iPort = node->addr.GetPort(); }
-	
-	if( (dAddr != 0) && (dAddr != 0xFFFFFFFF) )	//if( pnode && (pnode->sAddr) )
+	if( dAddr != 0 )	//if( pnode && (pnode->sAddr) )
 	{
 		LOCK(cs_vAllNodesIp);
 		if( vAllNodeIps.size() )
 		{
-			DWORD dFind = 0;
+            int dFind = 0;
 			//vector<DWORD>::iterator itr = vAllNodeIps.begin();
 			//while (itr != vAllNodeIps.end())
 			
@@ -135,8 +110,7 @@ DWORD AddNodeIp(DWORD dAddr, int bAdd)
 				{
 					dFind++;
 					if( !bAdd ){	// =0, del
-						itr = vAllNodeIps.erase(itr);	// del ip
-						//itr = vAllNodeIps.erase(itr);	// del port
+						itr = vAllNodeIps.erase(itr);
 						rzt++;
 					}
 					break;
@@ -144,11 +118,7 @@ DWORD AddNodeIp(DWORD dAddr, int bAdd)
 				else itr++;
 			}
 			if( bAdd == 1 ){	// =1, add
-				if( !dFind ) { 
-					vAllNodeIps.push_back(dAddr);
-					//vAllNodeIps.push_back(iPort);	
-					rzt++; 
-				}
+				if( !dFind ) { vAllNodeIps.push_back(dAddr); rzt++; }
 			}
 			else if( bAdd == 2 ){ rzt = dFind; }
    
@@ -174,7 +144,7 @@ DWORD AddNodeIp(DWORD dAddr, int bAdd)
   return rzt;
 }
 
-std::string dwIpToStr(const DWORD nValue)   
+std::string dwIpToStr(const int nValue)
 {     
     //char strTemp[20];   
     //sprintf( strTemp,"%d.%d.%d.%d", (nValue&0xff000000)>>24, (nValue&0x00ff0000)>>16, (nValue&0x0000ff00)>>8, (nValue&0x000000ff) );
@@ -182,167 +152,28 @@ std::string dwIpToStr(const DWORD nValue)
     return sIp;	//string(strTemp);   
 } 
 
-void AddDisconnectNode(CNode *pnode)
+int ConnectToIp(int dIp)
 {
-#ifdef USE_BITNET
-	if( (GetArg("-reconsockerrnode", 1)) && (pnode != NULL) )
+    int rzt = 0;
+	if( dIp > 0 )
 	{
-		//if( pnode->hSocket != INVALID_SOCKET )
+		CAddress addr;
+        std::string strAddr = dwIpToStr(dIp);
+		CNode* pnode = ConnectNode(addr, strAddr.c_str());
+		if( pnode != NULL )
 		{
-			string sHostPort;
-			DWORD dPort = pnode->vBitNet.v_ListenPort;
-			if( dPort > 10 )
-			{
-				sHostPort = strprintf("+%s:%d", pnode->addr.ToStringIP().c_str(), dPort); 
-			}else{
-				sHostPort = strprintf("+%s", pnode->addr.ToString().c_str()); 
-			}
-			AddOneShot(sHostPort, 0);
-			//if( fDebug ){ printf("AddDisconnectNode [%s]\n", sHostPort.c_str()); }
-		}
-	}
-#endif
-}
-
-DWORD ConnectToIp(DWORD dIp, DWORD dPort)
-{
-    DWORD rzt = 0;
-	//if(fDebug){ printf("ConnectToIp 1: %X, : %d\n", dIp, dPort); }
-    try {
-		if( dIp > 0 )
-		{
-			string strAddr;
-			string sHostPort;
-			DWORD dCmd = dPort & 0xFFFC0000;
-			if( (dPort & 0x10000) > 0 ){ 
-			    //dPort = dPort - 0x10000; 
-				strAddr = (char*)dIp;
-			}else{ strAddr = dwIpToStr(dIp); }
-			dPort = dPort & 0x0000FFFF;
-			
-			if( dPort == 0 ){ dPort = 920; }	//GetDefaultPort(); }
-			sHostPort = strprintf("+%s:%d", strAddr.c_str(), dPort); 
-			//printf("ConnectToIp [%s] : %X, ips= %s : %d, rzt=%d\n", sHostPort.c_str(), dIp, strAddr.c_str(), dPort, rzt);
-			AddOneShot(sHostPort);
-
-			if( (dCmd & 0x00080000) > 0 )	// direct connect
-			{
-				CAddress addr;
-				//if(fDebug){ printf("ConnectToIp 2: %X, ips= %s : %d, %s\n", dIp, sHostPort.c_str(), dPort, (char*)dIp); }
-				CNode* pnode = ConnectNode(addr, strAddr.c_str(), dPort);
-				/*
-                vector<CAddress> vAdd;
-                int nOneDay = 24*3600;
-                addr.nTime = GetTime() - 3*nOneDay - GetRand(4*nOneDay); // use a random age between 3 and 7 days old
-                vAdd.push_back(addr);
-                addrman.Add(vAdd, CNetAddr(strAddr.c_str(), true));
-				*/	
-			}
+			pnode->fNetworkNode = true;
 			rzt++;
-			
-			//rzt = OpenNetworkConnection(addr, NULL, strAddr.c_str());
-
-                /* int nOneDay = 24*3600;	
-                char *pIpPort = (char *)sHostPort.c_str();
-                if( pIpPort[0] == '+' ){ pIpPort++; }				
-                CAddress addr = CAddress(CService(pIpPort));
-                addr.nTime = GetTime() - 3*nOneDay - GetRand(4*nOneDay); // use a random age between 3 and 7 days old
-                addrman.Add(addr, CNetAddr(strAddr, false));	*/
-				
-			//if(fDebug){ printf("ConnectToIp [%s] : %X, ips= %s : %d, rzt=%d\n", pIpPort, dIp, strAddr.c_str(), dPort, rzt); }
 		}
-    }
-    catch (std::exception &e) {
-		//string strE = string(e.what()); 
-		//printf("ConnectToIp: except [%s]\n", strE.c_str());
-		PrintException(&e, "ConnectToIp()");
-    } catch (...) {
-        PrintException(NULL, "ConnectToIp()");
-    }
-	return rzt;
-}
-#pragma pack (1)
-struct IpAndPort_struct
-{
-	DWORD v_Ip;
-	unsigned short v_Port;
-};
-
-struct IpAndPort_Array
-{
-	DWORD v_Count;
-	IpAndPort_struct IpPorts[1];
-};
-#pragma pack ()
-	
-	
-/*                CAddress addr;
-                OpenNetworkConnection(addr, NULL, strAddr.c_str());
-*/
-				
-/* void static ThreadConnectToIpAndPort(void* parg)
-{
-    if(fDebug){ printf("ThreadConnectToIpAndPort started %X\n", parg); }
-    try
-    {	
-		if( parg != NULL )
-		{
-			IpAndPort_Array* IpAr = (IpAndPort_Array*)parg;
-			//delete (IpAndPort_struct*)parg;	//pIpPort;
-			int i, j;
-			j = IpAr->v_Count;
-			if(fDebug){ printf("ThreadConnectToIpAndPort, IpPortPak =%X, Count =%d\n", IpAr, j); }
-			if( j > 0 )
-			{
-				for(i = 0; i < j; i++)
-				{
-					DWORD dIp, dPort, dRzt;
-					dIp = IpAr->IpPorts[i].v_Ip;
-					dPort = IpAr->IpPorts[i].v_Port;
-					if( dIp ){ 
-						if(fDebug){ printf("ThreadConnectToIpAndPort %X, i =%d, %X : %u\n", IpAr, i, dIp, dPort); }
-						dRzt = ConnectToIp(dIp, dPort); 
-						if(fDebug){ printf("ThreadConnectToIpAndPort %X, i =%d, %X : %u, Rzt =%u\n", IpAr, i, dIp, dPort, dRzt); }
-						
-						for (int i2 = 0; i2 < 10; i2++)
-						{
-							MilliSleep(500);
-							if (fShutdown) break;
-						}
-					}
-					if (fShutdown) break;
-				}
-			}
-		}
-    }
-    catch (std::exception& e) {
-        PrintException(&e, "ThreadConnectToIpAndPort()");
-    } catch (...) {
-        PrintException(NULL, "ThreadConnectToIpAndPort()");
-    }
-	delete[] (char*)parg;	//pIpPort;
-    if(fDebug){ printf("ThreadConnectToIpAndPort exiting %X\n", parg); }
-} */
-
-/* DWORD SyncNodeIpPort(DWORD ip, DWORD port)
-{
-	DWORD rzt = 0;
-	if( ip > 0 ){
-		if(fDebug){ printf("SyncNodeIpPort IpPortPak =%X, sz=%u\n", ip, port); }
-		char* p = new char[port];
-		if( p ){
-		if(fDebug){ printf("SyncNodeIpPort IpPortPak =%X, sz=%u\n", p, port); }
-		CopyMemory(&p[0], (char*)ip, port);
-		if (!NewThread(ThreadConnectToIpAndPort, p)){
-			printf("Error: NewThread(ThreadConnectToIpAndPort) failed\n"); }
-		else{ rzt++; }}
+		//rzt = OpenNetworkConnection(addr, NULL, strAddr.c_str());
+		printf("ConnectToIp: %X, ips= %s, rzt=%d\n", dIp, strAddr.c_str(), rzt);
 	}
 	return rzt;
-} */
+}
 
-DWORD SyncNodeIps(vector<int> &vIps)
+int SyncNodeIps(vector<int> &vIps)
 {
-	DWORD rzt = 0;
+    int rzt = 0;
 	int iTt = GetArg("-maxconnections", 125);
 	int iTc = GetTotalConnects();
 
@@ -352,7 +183,7 @@ DWORD SyncNodeIps(vector<int> &vIps)
             printf("SyncNodeIps: %X\n", hIp);
 			if( AddNodeIp(hIp, 2) == 0 )	// not exists
 			{
-				if( ConnectToIp(hIp, 0) ){ rzt++; }
+				if( ConnectToIp(hIp) ){ rzt++; }
 				MilliSleep(20);
 			}
         }
@@ -360,31 +191,10 @@ DWORD SyncNodeIps(vector<int> &vIps)
 	return rzt;
 }
 
-void AddOneShot(string strDest, int bPushFront)
+void AddOneShot(string strDest)
 {
     LOCK(cs_vOneShots);
-	try{
-	int bAdd = 1;
-	if( GetArg("-checkoneshot", 0) )
-	{
-		deque<string>::iterator itString = find( vOneShots.begin(), vOneShots.end(), strDest );
-		if( itString != vOneShots.end() ){ bAdd = 0; }
-	}
-	if( bAdd )
-	{
-		if( bPushFront == 0 ){ vOneShots.push_back(strDest); }
-		else{ vOneShots.push_front(strDest); }
-		if( GetArg("-debug2", 0) ){ printf("AddOneShot [%s], count = %d\n", strDest.c_str(), vOneShots.size()); }
-	}
-	//else if( fDebug ){ printf("AddOneShot [%s] exists, count = %d\n", strDest.c_str(), vOneShots.size()); }
-    }
-    catch (std::exception &e) {
-		string strE = string(e.what()); 
-		printf("AddOneShot: except [%s]\n", strE.c_str());
-		//PrintException(&e, "AddOneShot()");
-    } catch (...) {
-        PrintException(NULL, "AddOneShot()");
-    }	
+    vOneShots.push_back(strDest);
 }
 
 unsigned short GetListenPort()
@@ -770,37 +580,7 @@ CNode* FindNode(const CService& addr)
     return NULL;
 }
 
-CNode* FindNode(const CNode* node)
-{
-    try {
-        //LOCK(cs_vNodes);
-        vector<CNode*> vNodesCopy = vNodes;
-		BOOST_FOREACH(CNode* pnode, vNodesCopy)
-            if (pnode == node)
-                return (pnode);
-    }catch (std::exception &e) {
-		string strE = string(e.what()); 
-		printf("FindNode: except [%s]\n", strE.c_str());
-    }	
-    return NULL;
-}
-
-CNode* FindNode(const char *pIpPort)
-{
-    LOCK(cs_vNodes);
-    BOOST_FOREACH(CNode* pnode, vNodes)
-	{
-        string sIp = pnode->addr.ToString();
-		char *p1 = (char*)(sIp.c_str());
-		if( strcmp(p1, pIpPort) == 0 ){ 
-			if( GetArg("-debug2", 0) ){ printf(" FindNode(char *) [%s] = true\n", pIpPort); }
-			return (pnode); 
-		}
-	}
-    return NULL;
-}
-
-CNode* ConnectNode(CAddress addrConnect, const char *pszDest, int iPort)	//CNode* ConnectNode(CAddress addrConnect, const char *pszDest)
+CNode* ConnectNode(CAddress addrConnect, const char *pszDest)
 {
     if (pszDest == NULL) {
         if (IsLocal(addrConnect))
@@ -813,30 +593,17 @@ CNode* ConnectNode(CAddress addrConnect, const char *pszDest, int iPort)	//CNode
             pnode->AddRef();
             return pnode;
         }
-    }else{
-#ifdef USE_BITNET
-		CNode* pnode = FindNode(pszDest);
-		if( pnode)
-		{ 
-		    if( pnode->vBitNet.v_ListItem ){ 
-			pnode->AddRef();   return pnode; 
-			}
-		}
-#endif
-	}
+    }
 
 
     /// debug print
-    printf("trying connection [%s] : [%d] lastseen=%.1fhrs\n",
-        pszDest ? pszDest : addrConnect.ToString().c_str(), iPort,
+    printf("trying connection %s lastseen=%.1fhrs\n",
+        pszDest ? pszDest : addrConnect.ToString().c_str(),
         pszDest ? 0 : (double)(GetAdjustedTime() - addrConnect.nTime)/3600.0);
 
     // Connect
     SOCKET hSocket;
-	int nTimeout = GetArg("-contimeout", 5000);	//-- 2014.11.30 add
-	int iDefPort = iPort;
-	if( iDefPort == 0 ){ iDefPort = GetDefaultPort(); }
-    if (pszDest ? ConnectSocketByName(addrConnect, hSocket, pszDest, iDefPort, nTimeout) : ConnectSocket(addrConnect, hSocket, nTimeout))	//if (pszDest ? ConnectSocketByName(addrConnect, hSocket, pszDest, GetDefaultPort()) : ConnectSocket(addrConnect, hSocket))
+    if (pszDest ? ConnectSocketByName(addrConnect, hSocket, pszDest, GetDefaultPort()) : ConnectSocket(addrConnect, hSocket))
     {
         addrman.Attempt(addrConnect);
 
@@ -875,7 +642,7 @@ void CNode::CloseSocketDisconnect()
 {
 	//if( fDebug ){ printf("CloseSocketDisconnect Socket =%u, fDisconnect =%u, %X:%d\n", hSocket, fDisconnect, vBitNet.v_IpAddr, addr.GetPort()); }
 	//if( !fDisconnect )
-	try{
+
     fDisconnect = true;
     if (hSocket != INVALID_SOCKET)
     {
@@ -883,11 +650,11 @@ void CNode::CloseSocketDisconnect()
 		closesocket(hSocket);
         hSocket = INVALID_SOCKET;
 		
-        //AddNodeIp(this->vBitNet.v_IpAddr, 0);
-#ifdef USE_BITNET
-		//if( dUseChat || dStartVpnClient || dStartVpnServer )
+        AddNodeIp(this->vBitNet.v_IpAddr, 0);
+#ifdef WIN32
+		if( dUseChat || dStartVpnClient || dStartVpnServer )
 		{
-			if( vBitNet.v_ListItem > 0 ){ SynNodeToBitNetGui(this, 0, 0, NULL); }
+			SynNodeToVpnGui(this, 0, 0, NULL);
 		}
 #endif
 		
@@ -896,11 +663,6 @@ void CNode::CloseSocketDisconnect()
         if (lockRecv)
             vRecvMsg.clear();
     }
-	} catch (std::exception& e)
-	{
-		string strE = string(e.what()); 
-		printf("CloseSocketDisconnect: except [%s]\n", strE.c_str());
-	}
 }
 
 void CNode::PushVersion()
@@ -909,214 +671,17 @@ void CNode::PushVersion()
     int64_t nTime = (fInbound ? GetAdjustedTime() : GetTime());
     CAddress addrYou = (addr.IsRoutable() && !IsProxy(addr) ? addr : CAddress(CService("0.0.0.0",0)));
     CAddress addrMe = GetLocalAddress(&addr);
-	/*
-	int iVer = BitNet_Version;
+
+    /* int iVer = BitNet_Version;
     RAND_bytes((unsigned char*)&nLocalHostNonce, sizeof(nLocalHostNonce));
     printf("send version message: version %d, blocks=%d, us=%s, them=%s, peer=%s\n", PROTOCOL_VERSION, nBestHeight, addrMe.ToString().c_str(), addrYou.ToString().c_str(), addr.ToString().c_str());
     PushMessage("version", PROTOCOL_VERSION, nLocalServices, nTime, addrYou, addrMe,
-                nLocalHostNonce, FormatSubVersion(CLIENT_NAME, CLIENT_VERSION, std::vector<string>()), nBestHeight, iVer);
-	*/			
-	this->BeginMessage("version");
-	this->ssSend << PROTOCOL_VERSION << nLocalServices << nTime << addrYou << addrMe;
-    this->ssSend << nLocalHostNonce << FormatSubVersion(CLIENT_NAME, CLIENT_VERSION, std::vector<string>()) << nBestHeight << BitNet_Version;
-	this->ssSend << BitNet_Network_id;
-	unsigned short wPort = 0;
-	unsigned char bIsGui = 0;	// 2014.12.18 add
-	
-#ifdef USE_BITNET
-	wPort = GetListenPort();
-#endif
+                nLocalHostNonce, FormatSubVersion(CLIENT_NAME, CLIENT_VERSION, std::vector<string>()), nBestHeight, iVer); */
 
-#ifdef QT_GUI
-    bIsGui++;
-#endif	
-	this->ssSend << wPort;	//this->ssSend << BitNet_Network_id << wPort;
-	this->ssSend << bIsGui;
-	
-//2014.12.28 begin
-	unsigned short wCtPort = 0;
-	unsigned short wPrPort = 0;	
-#ifdef USE_BITNET
-	wCtPort = iVpnServiceCtrlPort;
-	wPrPort = d_P2P_proxy_port;
-#endif
-	this->ssSend << wCtPort;
-	this->ssSend << wPrPort;
-//2014.12.28 end	
-
-//--2014.11.10 begin	
-#ifdef USE_BITNET
-    if( GetArg("-pushbitnetinver", 0) )
-	{
-	    unsigned char bIncludeBitNet = 1;
-		this->ssSend << bIncludeBitNet;	//--2014.12.21 add
-		
-		std::string sMemCpu = "";
-		DWORD iTtVpnConn = 0, iSerCCF = 0;
-		if( dStartVpnServer )
-		{	 
-			iTtVpnConn = iTotalVpnConnects;
-			iSerCCF = iVpnSerCoinConfirms;
-			sMemCpu = std::string( sVpnMemAndCpuInfo.c_str() ); 
-		}
-		this->ssSend << bShowInOtherList << isVpnServer << iVpnServiceCtrlPort << iVpnServicePort << iVpnServiceFee << iVpnServiceTryMinute << sDefWalletAddress << sVpnWalletAddress << sVpnNicknamePack << sMemCpu << iSerCCF << iTtVpnConn << d_Vpn_LanID << iOpenSocketProxy;
-		this->ssSend << d_P2P_proxy_port;	// << wPort;	// << BitNet_Version;
-	}
-#endif
-//--2014.11.10 end
-
+    this->BeginMessage("version");
+    this->ssSend << PROTOCOL_VERSION << nLocalServices << nTime << addrYou << addrMe;
+    this->ssSend << nLocalHostNonce << FormatSubVersion(CLIENT_NAME, CLIENT_VERSION, std::vector<string>()) << nBestHeight << BitNet_Version << BitNet_Network_id;
     this->EndMessage();
-}
-
-void CNode::PushBitNetInfo()
-{
-#ifdef USE_BITNET	
-/*
-int bShowInOtherList = 0;
-int isVpnServer = 0;
-int iVpnServicePort = 923;
-int iVpnServiceCtrlPort = 922;
-int64_t iVpnServiceFee = 0;
-int iVpnServiceTryMinute = 0;
-std::string sVpnWalletAddress = ""; */
-
-	/*std::string sDefWAddr;
-	if( bShowWAddrInOtherNodes )
-	{
-		sDefWAddr = sDefWalletAddress;
-	}*/
-	//if( dStartVpnServer ){ sWAddr = std::string(sVpnWalletAddress.c_str()); }
-	//else { sWAddr = std::string(sDefWalletAddress.c_str()); } */
-	//PushMessage("vpn-1", bShowInOtherList, isVpnServer, iVpnServiceCtrlPort, iVpnServicePort, iVpnServiceFee, iVpnServiceTryMinute, sDefWalletAddress, sVpnWalletAddress, sVpnNickname);
-	
-	std::string sMemCpu = "";
-	DWORD iTtVpnConn = 0, iSerCCF = 0;
-
-	if( dStartVpnServer )
-	{ 
-		iTtVpnConn = iTotalVpnConnects;
-		iSerCCF = iVpnSerCoinConfirms;
-		sMemCpu = std::string( sVpnMemAndCpuInfo.c_str() ); 
-	}
-
-	//if( fDebug ){ printf("PushBitNetInfo::iTotalVpnConnects=%u, iVpnSerCoinConfirms=%u, %s, %u\n", iTotalVpnConnects, iVpnSerCoinConfirms, sVpnMemAndCpuInfo.c_str(), GetListenPort()); }
-	//PushMessage("vpn-1", bShowInOtherList, isVpnServer, iVpnServiceCtrlPort, iVpnServicePort, iVpnServiceFee, iVpnServiceTryMinute, sDefWalletAddress, sVpnWalletAddress, sVpnNickname);
-    if( vBitNet.v_iVersion < 1115 ){ this->BeginMessage("vpn-1"); }
-	else{ this->BeginMessage("BitNet-1"); }
-    //this->ssSend << bShowInOtherList << isVpnServer << iVpnServiceCtrlPort << iVpnServicePort << iVpnServiceFee << iVpnServiceTryMinute << sDefWAddr << sVpnWalletAddress << sVpnNickname << sMemCpu << iSerCCF << iTtVpnConn << d_Vpn_LanID;
-	this->ssSend << bShowInOtherList << isVpnServer << iVpnServiceCtrlPort << iVpnServicePort << iVpnServiceFee << iVpnServiceTryMinute << sDefWalletAddress << sVpnWalletAddress << sVpnNicknamePack << sMemCpu << iSerCCF << iTtVpnConn << d_Vpn_LanID << iOpenSocketProxy;
-	//unsigned short wPort = GetListenPort();
-	this->ssSend << d_P2P_proxy_port;	// << wPort;	// << BitNet_Version;
-    this->EndMessage();
-	//if( fDebug ){ printf("PushBitNetInfo to [%s], iVer =%d\n", this->addr.ToString().c_str(), this->vBitNet.v_iVersion); }
-#endif
-}
-
-void CNode::PushBitNetChat(std::string msg, DWORD fColor, int iFontSize, int iToAll, int bAes)
-{
-	//if( vBitNet.v_iVersion < 1117 ){ PushMessage("vpn-c", msg); }
-	//else{ 
- 	  //WORD fSize = iFontSize;
-	  PushMessage("BitNet-c", msg); //}	//PushMessage("BitNet-c", msg, fSize, fColor, iToAll, bAes); }
-}
-
-void CNode::PushTransFileReq(char* pFile, int64_t fSize)
-{
-	// Side A
-	this->vBitNet.v_File_Loc = std::string( pFile );
-	this->vBitNet.v_File_size = fSize;
-	if( vBitNet.v_iVersion < 1115 ){ PushMessage("vpn-fr", this->vBitNet.v_File_Loc, fSize); }
-	else{ PushMessage("BitNet-fr", this->vBitNet.v_File_Loc, fSize); }
-}
-
-void CNode::PushTransFileAck(char* pFile, DWORD iOk)
-{
-	if( pFile ){ this->vBitNet.v_File_Loc = std::string( pFile ); }
-	else{ this->vBitNet.v_File_Loc.clear(); }
-	if( vBitNet.v_iVersion < 1115 ){ PushMessage("vpn-fa", iOk); }
-	else{ PushMessage("BitNet-fa", iOk); }
-}
-
-void CNode::PushBinBuf(const char* pCmd, PVOID pBuf, int64_t bSz)
-{
-	if( pBuf )
-	{
-        if( this->vBitNet.v_iVersion > 1112 ){
-		try {
-            vector<char> v(bSz);
-			//copy(pBuf, pBuf + bSz, v.begin());
-			memcpy((char*)&v[0], pBuf, bSz);
-			PushMessage(pCmd, v);	//filein >> *this;
-        }
-        catch (std::exception &e) {
-            //return error("%s() : deserialize or I/O error", __PRETTY_FUNCTION__);
-        }}
-	}
-}
-
-void CNode::PushBitNetCustomPak(char* pCmd, PVOID pBuf, int64_t bSz)
-{
-	PushBinBuf(pCmd, pBuf, bSz);
-}
-
-/* void CNode::PushTransFileBuf(PVOID pBuf, int64_t bSz)
-{
-	if( pBuf )
-	{
-        PushBinBuf("vpn-fb", pBuf, bSz);
-		try {
-            vector<char> v(bSz);
-			//copy(pBuf, pBuf + bSz, v.begin());
-			memcpy((char*)&v[0], pBuf, bSz);
-			PushMessage("vpn-fb", v);	//filein >> *this;
-        }
-        catch (std::exception &e) {
-            //return error("%s() : deserialize or I/O error", __PRETTY_FUNCTION__);
-        }
-	}
-} */
-
-void CNode::PushSocketBuf(DWORD dOpt, PVOID pBuf, int64_t bSz)
-{
-	if( pBuf )
-	{
-        if( dOpt == 0 ){ 
-			if( vBitNet.v_iVersion < 1115 ){ PushBinBuf("vpn-fb", pBuf, bSz); }
-			else{ PushBinBuf("BitNet-fb", pBuf, bSz); }
-		}
-		if( dOpt == 1 ){ 
-			if( vBitNet.v_iVersion < 1115 ){ PushBinBuf("vpn-pR", pBuf, bSz); }
-			else{ PushBinBuf("BitNet-pR", pBuf, bSz); }
-		}
-		else if( dOpt == 2 ){ 
-			if( vBitNet.v_iVersion < 1115 ){ PushBinBuf("vpn-pA", pBuf, bSz); }
-			else{ PushBinBuf("BitNet-pA", pBuf, bSz); }
-		}
-		else if( dOpt == 3 ){ 
-			if( vBitNet.v_iVersion < 1115 ){ PushBinBuf("vpn-a", pBuf, bSz); }
-			else{ PushBinBuf("BitNet-AA", pBuf, bSz); }
-		}
-	}
-}
-
-void CNode::PushTransFileFinish(DWORD df, int64_t fSize)
-{
-	if( this->vBitNet.v_File_size > 0 )
-	{
-		if( vBitNet.v_iVersion < 1115 ){ PushMessage("vpn-fc", fSize); }
-		else{ PushMessage("BitNet-fc", fSize); }
-	}
-	this->vBitNet.v_File_size = 0;
-	this->vBitNet.v_Starting_recv = 0;
-	this->vBitNet.v_RemoteFileBuf.clear();
-	this->vBitNet.v_File_Loc.clear();
-	this->vBitNet.v_File_Req.clear();
-	
-}
-
-void CNode::PushSyncBitNetNodeReq()
-{
-	PushMessage("BitNet-AR", BitNet_Network_id, BitNet_Version);
 }
 
 void CNode::PushVpnNode()
@@ -1132,17 +697,17 @@ void CNode::PushVpnNode()
 	  vector<int> vCopyIps = vAllNodeIps;
 	  if( vCopyIps.size() > 1 )
 	  {
-		/* for (vector<int>::iterator itr = vCopyIps.begin(); itr != vCopyIps.end();) 
+		for (vector<int>::iterator itr = vCopyIps.begin(); itr != vCopyIps.end();) 
 		{
 			if( *itr == vBitNet.v_IpAddr )
 			{
 				itr = vCopyIps.erase(itr);
 			}
 			else itr++;
-		} */
+		}
 		if( vCopyIps.size() > 0 ){
 		try {
-			PushMessage("BitNet-A", vCopyIps);
+			PushMessage("vpn-a", vCopyIps);
 			vBitNet.v_SendSyncNodeIpsTime = nTime;
         }
         catch (std::exception &e) {
@@ -1194,8 +759,7 @@ bool CNode::Misbehaving(int howmuch)
             if (setBanned[addr] < banTime)
                 setBanned[addr] = banTime;
         }
-        if( fDebug ){ printf("[%s] Misbehaving %d\n", addrName.c_str(), howmuch); }
-		CloseSocketDisconnect();
+        CloseSocketDisconnect();
         return true;
     } else
         printf("Misbehaving: %s (%d -> %d)\n", addr.ToString().c_str(), nMisbehavior-howmuch, nMisbehavior);
@@ -1319,6 +883,8 @@ int CNetMessage::readData(const char *pch, unsigned int nBytes)
 
 
 
+
+
 // requires LOCK(cs_vSend)
 void SocketSendData(CNode *pnode)
 {
@@ -1345,13 +911,8 @@ void SocketSendData(CNode *pnode)
                 int nErr = WSAGetLastError();
                 if (nErr != WSAEWOULDBLOCK && nErr != WSAEMSGSIZE && nErr != WSAEINTR && nErr != WSAEINPROGRESS)
                 {
-                    //if( nErr != 10053 )
-					{
-					AddDisconnectNode(pnode);	//-- 2014.11.30 add
-					
-					printf("[%s] socket send error %d\n", pnode->addrName.c_str(), nErr);
+                    printf("socket send error %d\n", nErr);
                     pnode->CloseSocketDisconnect();
-					}
                 }
             }
             // couldn't send anything at all
@@ -1414,7 +975,6 @@ void ThreadSocketHandler2(void* parg)
                     pnode->grantOutbound.Release();
 
                     // close socket and cleanup
-					//if( fDebug ){ printf("ThreadSocketHandler2 [%s] CloseSocketDisconnect, fDisconnect =%d, GetRefCount() =%d\n", pnode->addrName.c_str(), pnode->fDisconnect, pnode->GetRefCount()); }
                     pnode->CloseSocketDisconnect();
 
                     // hold in disconnected pool until all refs are released
@@ -1469,7 +1029,7 @@ void ThreadSocketHandler2(void* parg)
         //
         struct timeval timeout;
         timeout.tv_sec  = 0;
-        timeout.tv_usec = GetArg("-tv_usec", 50000); //50000; // frequency to poll pnode->vSend
+        timeout.tv_usec = 50000; // frequency to poll pnode->vSend
 
         fd_set fdsetRecv;
         fd_set fdsetSend;
@@ -1557,7 +1117,7 @@ void ThreadSocketHandler2(void* parg)
                 if (nErr != WSAEWOULDBLOCK)
                     printf("socket error accept failed: %d\n", nErr);
             }
-            else if (nInbound >= GetArg("-maxconnections", 5000) - MAX_OUTBOUND_CONNECTIONS)
+            else if (nInbound >= GetArg("-maxconnections", 125) - MAX_OUTBOUND_CONNECTIONS)
             {
                 closesocket(hSocket);
             }
@@ -1568,22 +1128,13 @@ void ThreadSocketHandler2(void* parg)
             }
             else
             {
-				struct in_addr ip;
-				addr.GetInAddr(&ip);
-								
-				if( ip.s_addr == 0x100007f )	// 127.0.0.1
-				{ 
-					printf("connection from %s dropped (banned)\n", addr.ToString().c_str());
-					closesocket(hSocket);				
-				}else{
-					printf("accepted connection %s\n", addr.ToString().c_str());	//printf("accepted connection %s, %x\n", addr.ToString().c_str(), ip.s_addr);
-					CNode* pnode = new CNode(hSocket, addr, "", true);
-					pnode->AddRef();
-					{
-						LOCK(cs_vNodes);
-						vNodes.push_back(pnode);
-					}
-				}
+                printf("accepted connection %s\n", addr.ToString().c_str());
+                CNode* pnode = new CNode(hSocket, addr, "", true);
+                pnode->AddRef();
+                {
+                    LOCK(cs_vNodes);
+                    vNodes.push_back(pnode);
+                }
             }
         }
 
@@ -1617,11 +1168,10 @@ void ThreadSocketHandler2(void* parg)
 					if( pnode->vBitNet.v_Starting_recv ){ iTrs = 0; }
 					else{ iTrs = pnode->GetTotalRecvSize(); }
 					if (iTrs > iRfs) {	//if (pnode->GetTotalRecvSize() > ReceiveFloodSize()) {
-                        //if (!pnode->fDisconnect)
+                        if (!pnode->fDisconnect)
                             //printf("socket recv flood control disconnect (%u bytes)\n", pnode->GetTotalRecvSize());
-							printf("[%s] socket recv flood control disconnect (%u bytes), %u\n", pnode->addr.ToString().c_str(), iTrs, iRfs);
-                        pnode->vBitNet.v_bCloseByRecvOverMaxRecvBufSz = 1;
-						pnode->CloseSocketDisconnect();
+							printf("socket recv flood control disconnect (%u bytes), %u\n", iTrs, iRfs);
+                        pnode->CloseSocketDisconnect();
                     }
                     else {
                         // typical socket buffer is 8K-64K
@@ -1629,45 +1179,16 @@ void ThreadSocketHandler2(void* parg)
                         int nBytes = recv(pnode->hSocket, pchBuf, sizeof(pchBuf), MSG_DONTWAIT);
                         if (nBytes > 0)
                         {
-                            //if( fDebug ){ printf("[%s] recv %d bytes\n", pnode->addr.ToString().c_str(), nBytes); }
-							if( pnode->vBitNet.v_Recv_ZeroBytes > 0 ){ pnode->vBitNet.v_Recv_ZeroBytes = 0; }	// BitNet Add
-							
-							if (!pnode->ReceiveMsgBytes(pchBuf, nBytes))
-							{
-                                if( fDebug ){ printf("ReceiveMsgBytes faile, [%s] CloseSocketDisconnect\n", pnode->addrName.c_str()); }
-								AddDisconnectNode(pnode);	//-- 2014.11.30 add
-								pnode->CloseSocketDisconnect();
-							}
+                            if (!pnode->ReceiveMsgBytes(pchBuf, nBytes))
+                                pnode->CloseSocketDisconnect();
                             pnode->nLastRecv = GetTime();
                         }
                         else if (nBytes == 0)
                         {
                             // socket closed gracefully
-                            pnode->vBitNet.v_Recv_ZeroBytes++;	// BitNet Add			
-							if( pnode->nLastRecv == 0 ){ pnode->PushMessage("getver"); }
-							else if( pnode->nLastSend == 0 ){ pnode->PushVersion(); }							
-							else{ pnode->fDisconnect = true; }
-							
-							//if (!pnode->fDisconnect)
-							{
-							
-								/*int64_t i6Now = GetTime();
-								if( ((i6Now - pnode->nLastSend) >= 60) or ((i6Now - pnode->nLastRecv) >= 60) )
-								{
-									pnode->PushMessage("getver");
-								}*/
-								//AddDisconnectNode(pnode);	//-- 2014.11.30 add								
-								//pnode->CloseSocketDisconnect();							
-							}
-							
-							//if( (i6Now > pnode->nTimeConnected) && ((i6Now - pnode->nTimeConnected) >= 5) )
-							{
-								//if (!pnode->fDisconnect)
-									//printf("socket closed (nBytes = 0), %I64u : %u, [%s]\n", pnode->nTimeConnected, pnode->vBitNet.v_Recv_ZeroBytes, pnode->addr.ToString().c_str());
-								//if( pnode->vBitNet.v_Recv_ZeroBytes > 60 )
-									//AddDisconnectNode(pnode);	//-- 2014.11.30 add
-									//pnode->CloseSocketDisconnect();
-							}
+                            //if (!pnode->fDisconnect)
+                                printf("socket closed (nBytes = 0)\n");
+                            //pnode->CloseSocketDisconnect();
                         }
                         else if (nBytes < 0)
                         {
@@ -1675,13 +1196,10 @@ void ThreadSocketHandler2(void* parg)
                             int nErr = WSAGetLastError();
                             if (nErr != WSAEWOULDBLOCK && nErr != WSAEMSGSIZE && nErr != WSAEINTR && nErr != WSAEINPROGRESS)
                             {
-                                //if( nErr != 10053 )	//if( nErr != 10054 )
+                                //if( nErr != 10054 )
 								{
 									if (!pnode->fDisconnect)
-									{
-										printf("socket recv error %d, [%s]\n", nErr, pnode->addr.ToString().c_str());
-										AddDisconnectNode(pnode);	//-- 2014.11.30 add								
-									}
+										printf("socket recv error %d\n", nErr);
 									pnode->CloseSocketDisconnect();
 								}
                             }
@@ -1706,24 +1224,12 @@ void ThreadSocketHandler2(void* parg)
             // Inactivity checking
             //
             int64_t nTime = GetTime();
-            if( (nTime - pnode->nTimeConnected) > 60 )
+            if (nTime - pnode->nTimeConnected > 60)
             {
-                if( pnode->nLastSend == 0 ){ pnode->PushVersion(); }
-				else if ( pnode->nLastRecv == 0 )	//if (pnode->nLastRecv == 0 || pnode->nLastSend == 0)
+                if (pnode->nLastRecv == 0 || pnode->nLastSend == 0)
                 {
-					if( pnode->vBitNet.v_ListenPort > 0 ){ pnode->PushMessage("getver"); }
-					else{  
-						if( !pnode->fDisconnect )
-						{
-							AddDisconnectNode(pnode);	//-- 2014.11.30 add								
-							pnode->CloseSocketDisconnect();	//pnode->fDisconnect = true; //}
-						}					
-					}
-					//if( fDebug ){ printf("socket (%s) no message in first 360 seconds, %I64u %I64u\n", pnode->addr.ToString().c_str(), pnode->nLastRecv, pnode->nLastSend); }
-					//if( pnode->vBitNet.v_BitNetMsgCount == 0 )
-					{ 
-						//if( (nTime > pnode->vBitNet.v_LastPushMsgTime) && (nTime - pnode->vBitNet.v_LastPushMsgTime) > 60 ){ pnode->PushMessage("getver"); }
-					}
+                    printf("socket no message in first 60 seconds, %d %d\n", pnode->nLastRecv != 0, pnode->nLastSend != 0);
+                    pnode->fDisconnect = true;
                 }
                 else if (nTime - pnode->nLastSend > TIMEOUT_INTERVAL)
                 {
@@ -1740,26 +1246,17 @@ void ThreadSocketHandler2(void* parg)
                     printf("ping timeout: %fs\n", 0.000001 * (GetTimeMicros() - pnode->nPingUsecStart));
                     pnode->fDisconnect = true;
                 }
-            }/* else{
-				if( pnode->nLastSend == 0 )
-				{ 
-					pnode->PushVersion();
-					printf("pnode (%s) nLastSend = 0, PushVersion()\n", pnode->addr.ToString().c_str());
-				}
-			} */
+            }
         }
         {
             LOCK(cs_vNodes);
             BOOST_FOREACH(CNode* pnode, vNodesCopy)
-			{
-                //if( pnode->vBitNet.v_ListItem > 0 ){ SynNodeToBitNetGui(pnode, 0, 0, NULL); }	//--2014.12.06 add
-				pnode->Release();
-			}
+                pnode->Release();
         }
 
         MilliSleep(10);
     }
-}	//ThreadSocketHandler2
+}
 
 
 
@@ -1801,12 +1298,6 @@ void ThreadMapPort2(void* parg)
     struct UPNPDev * devlist = 0;
     char lanaddr[64];
 
-#ifdef USE_BITNET
-	int i_Open_P2P_Proxy = d_Open_P2P_Proxy;
-	int i_P2P_proxy_port = d_P2P_proxy_port;
-	std::string P2p_port = strprintf("%u", i_P2P_proxy_port);
-#endif
-
 #ifndef UPNPDISCOVER_SUCCESS
     /* miniupnpc 1.5 */
     devlist = upnpDiscover(2000, multicastif, minissdpdpath, 0);
@@ -1841,99 +1332,29 @@ void ThreadMapPort2(void* parg)
         }
 
         string strDesc = "VpnCoin " + FormatFullVersion();
-#ifdef USE_BITNET		
-		string strP2pDesc = "BitNet P2P Proxy " + P2p_port;
-#endif
+
 		
 #ifndef UPNPDISCOVER_SUCCESS
         /* miniupnpc 1.5 */
         r = UPNP_AddPortMapping(urls.controlURL, data.first.servicetype, port.c_str(), port.c_str(), lanaddr, strDesc.c_str(), "TCP", 0);
-#ifdef USE_BITNET
-		if( i_Open_P2P_Proxy )
-		  r2 = UPNP_AddPortMapping(urls.controlURL, data.first.servicetype, P2p_port.c_str(), P2p_port.c_str(), lanaddr, strP2pDesc.c_str(), "TCP", 0);
-#endif
-
 #else
         /* miniupnpc 1.6 */
         r = UPNP_AddPortMapping(urls.controlURL, data.first.servicetype, port.c_str(), port.c_str(), lanaddr, strDesc.c_str(), "TCP", 0, "0");
-#ifdef USE_BITNET
-		if( i_Open_P2P_Proxy )
-		  r2 = UPNP_AddPortMapping(urls.controlURL, data.first.servicetype, P2p_port.c_str(), P2p_port.c_str(), lanaddr, strP2pDesc.c_str(), "TCP", 0, "0");
-#endif
-
 #endif
 
         if(r!=UPNPCOMMAND_SUCCESS)
             printf("AddPortMapping(%s, %s, %s) failed with code %d (%s)\n",  port.c_str(), port.c_str(), lanaddr, r, strupnperror(r));
         else
             printf("UPnP Port Mapping successful. %u\n", r);
-
-#ifdef USE_BITNET
-		if(r2 != UPNPCOMMAND_SUCCESS){
-            d_P2P_Proxy_Port_mapped = 0;
-			if( fDebug ) printf("AddPortMapping(%s, %s, %s) failed with code %d (%s)\n", P2p_port.c_str(), P2p_port.c_str(), lanaddr, r2, strupnperror(r2));
-		}
-		else{
-            d_P2P_Proxy_Port_mapped++;
-			if( fDebug ) printf("UPnP Port Mapping for P2P Proxy successful. %u\n", r2);
-		}
-#endif
 			
         int i = 1;
-		int i_P2P_Proxy_Port_mapped = 0;
         while (true)
         {			
-#ifdef USE_BITNET
-			if( i_P2P_proxy_port != d_P2P_proxy_port )
-			{
-				printf("UPNP i_P2P_proxy_port= %u : %d\n", i_P2P_proxy_port, d_P2P_proxy_port);
-				r2 = UPNP_DeletePortMapping(urls.controlURL, data.first.servicetype, P2p_port.c_str(), "TCP", 0);
-				printf("UPNP_DeletePortMapping() Proxy =%d\n", r2);
-				d_P2P_Proxy_Port_mapped = 0;
-				i_P2P_Proxy_Port_mapped = 0;
-				
-				i_P2P_proxy_port = d_P2P_proxy_port;
-				P2p_port.clear();
-				P2p_port = strprintf("%u", i_P2P_proxy_port);
-				strP2pDesc.clear();
-				strP2pDesc = "BitNet P2P Proxy " + P2p_port;
-#ifndef UPNPDISCOVER_SUCCESS
-        /* miniupnpc 1.5 */
-		if( i_Open_P2P_Proxy )
-		{
-			r2 = UPNP_AddPortMapping(urls.controlURL, data.first.servicetype, P2p_port.c_str(), P2p_port.c_str(), lanaddr, strP2pDesc.c_str(), "TCP", 0);
-			if( r2 == UPNPCOMMAND_SUCCESS ) d_P2P_Proxy_Port_mapped = 1;
-		}
-#else
-        /* miniupnpc 1.6 */
-		if( i_Open_P2P_Proxy )
-		{
-			r2 = UPNP_AddPortMapping(urls.controlURL, data.first.servicetype, P2p_port.c_str(), P2p_port.c_str(), lanaddr, strP2pDesc.c_str(), "TCP", 0, "0");
-			if( r2 == UPNPCOMMAND_SUCCESS ) d_P2P_Proxy_Port_mapped = 1;
-		}
-#endif
-			}
-			//if( i_Open_P2P_Proxy != d_Open_P2P_Proxy )
-			{
-				i_Open_P2P_Proxy = d_Open_P2P_Proxy;
-			}		
-			if( i_P2P_Proxy_Port_mapped != d_P2P_Proxy_Port_mapped )
-			{
-				printf("UPNP i_P2P_Proxy_Port_mapped %u : %d\n", i_P2P_Proxy_Port_mapped, d_P2P_Proxy_Port_mapped);
-				i_P2P_Proxy_Port_mapped = d_P2P_Proxy_Port_mapped;
-				LoadIniCfg( 0, 1 );
-			}
-#endif
-
 		
 			if (fShutdown || !fUseUPnP)
             {
                 r  = UPNP_DeletePortMapping(urls.controlURL, data.first.servicetype, port.c_str(), "TCP", 0);
-#ifdef USE_BITNET
-				r2 = UPNP_DeletePortMapping(urls.controlURL, data.first.servicetype, P2p_port.c_str(), "TCP", 0);
                 printf("UPNP_DeletePortMapping() returned : %d\n", r);
-				if( fDebug ){ printf("UPNP_DeletePortMapping() P2P Proxy returned : %d\n", r2); }
-#endif				
                 freeUPNPDevlist(devlist); devlist = 0;
                 FreeUPNPUrls(&urls);
                 return;
@@ -1943,44 +1364,15 @@ void ThreadMapPort2(void* parg)
 #ifndef UPNPDISCOVER_SUCCESS
                 /* miniupnpc 1.5 */
                 r = UPNP_AddPortMapping(urls.controlURL, data.first.servicetype, port.c_str(), port.c_str(), lanaddr, strDesc.c_str(), "TCP", 0);
-#ifdef USE_BITNET
-				if( i_Open_P2P_Proxy )
-				{
-				  r2 = UPNP_AddPortMapping(urls.controlURL, data.first.servicetype, P2p_port.c_str(), P2p_port.c_str(), lanaddr, strP2pDesc.c_str(), "TCP", 0); 
-				  if( r2 == UPNPCOMMAND_SUCCESS ) d_P2P_Proxy_Port_mapped = 1;
-				}	else{
-				  r2 = UPNP_DeletePortMapping(urls.controlURL, data.first.servicetype, P2p_port.c_str(), "TCP", 0);
-				  d_P2P_Proxy_Port_mapped = 0;
-				}
-#endif
 #else
                 /* miniupnpc 1.6 */
                 r  = UPNP_AddPortMapping(urls.controlURL, data.first.servicetype, port.c_str(), port.c_str(), lanaddr, strDesc.c_str(), "TCP", 0, "0");
-#ifdef USE_BITNET
-				if( i_Open_P2P_Proxy )
-				{
-				  r2 = UPNP_AddPortMapping(urls.controlURL, data.first.servicetype, P2p_port.c_str(), P2p_port.c_str(), lanaddr, strP2pDesc.c_str(), "TCP", 0, "0");
-				  if( r2 == UPNPCOMMAND_SUCCESS ) d_P2P_Proxy_Port_mapped = 1;
-				}	else{
-				  r2 = UPNP_DeletePortMapping(urls.controlURL, data.first.servicetype, P2p_port.c_str(), "TCP", 0);
-				  d_P2P_Proxy_Port_mapped = 0;
-				}
-#endif
 #endif
 
                 if(r != UPNPCOMMAND_SUCCESS)
                     printf("AddPortMapping(%s, %s, %s) failed with code %d (%s)\n", port.c_str(), port.c_str(), lanaddr, r, strupnperror(r));
                 else
                     printf("UPnP Port Mapping successful.\n");
-					
-#ifdef USE_BITNET					
-                if( fDebug ){
-					if(r2 != UPNPCOMMAND_SUCCESS)
-					  printf("AddPortMapping(%s, %s, %s) failed with code %d (%s)\n", P2p_port.c_str(), P2p_port.c_str(), lanaddr, r2, strupnperror(r2));
-					else
-					  printf("UPnP Port Mapping for P2P Proxy successful.\n");
-				}
-#endif
             }
             MilliSleep(2000);
             i++;
@@ -2026,27 +1418,12 @@ void MapPort()
 // Each pair gives a source name and a seed name.
 // The first name is used as information source for addrman.
 // The second name should resolve to a list of seed addresses.
-static const char *strDNSSeed[][20] = {
-    {"s1.vpncoin.org", "seed.vpncoin.org:920"},
-    {"s2.vpncoin.org", "node.vpncoin.org:920"},
-    {"s3.vpncoin.org", "pool.vpncoin.org:920"},
-	{"s4.vpncoin.org", "s4.vpncoin.org:920"},
-	{"s5.vpncoin.org", "s5.vpncoin.org:920"},
-	{"s6.vpncoin.org", "s6.vpncoin.org:920"},
-	{"s7.vpncoin.org", "s7.vpncoin.org:920"},
-	{"s8.vpncoin.org", "s8.vpncoin.org:920"},
-	{"s9.vpncoin.org", "s9.vpncoin.org:920"},	
-	{"sa.vpncoin.org", "abe.vpncoin.org:920"},
-	{"sf.vpncoin.org", "faucet.vpncoin.org:920"},
-    {"s1.bitnet.wang", "s1.bitnet.wang:920"},
-    {"s2.bitnet.wang", "s2.bitnet.wang:920"},
-    {"s3.bitnet.wang", "s3.bitnet.wang:920"},
-	{"s4.bitnet.wang", "s4.bitnet.wang:920"},
-	{"s5.bitnet.wang", "s5.bitnet.wang:920"},
-	{"s6.bitnet.wang", "s6.bitnet.wang:920"},
-	{"s7.bitnet.wang", "s7.bitnet.wang:920"},
-	{"s8.bitnet.wang", "s8.bitnet.wang:920"},
-	{"s9.bitnet.wang", "s9.bitnet.wang:920"},
+static const char *strDNSSeed[][2] = {
+    {"s1.vpncoin.org", "seed.vpncoin.org"},
+    {"s2.vpncoin.org", "node.vpncoin.org"},
+    {"s3.vpncoin.org", "pool.vpncoin.org"},
+	{"sa.vpncoin.org", "abe.vpncoin.org"},
+	{"sf.vpncoin.org", "faucet.vpncoin.org"},
 };
 
 void ThreadDNSAddressSeed(void* parg)
@@ -2074,11 +1451,9 @@ void ThreadDNSAddressSeed2(void* parg)
 {
     printf("ThreadDNSAddressSeed started\n");
 
-    if( parg == NULL )
-	{
-		// goal: only query DNS seeds if address need is acute
-	  if ((addrman.size() > 0) &&
-        (!GetBoolArg("-forcednsseed", true))) {
+    // goal: only query DNS seeds if address need is acute
+    if ((addrman.size() > 0) &&
+        (!GetBoolArg("-forcednsseed", false))) {
         MilliSleep(11 * 1000);
 
         LOCK(cs_vNodes);
@@ -2086,49 +1461,32 @@ void ThreadDNSAddressSeed2(void* parg)
             printf("P2P peers available. Skipped DNS seeding.\n");
             return;
         }
-      }
-	}
+    }
+
     int found = 0;
 
     if (!fTestNet)
     {
         printf("Loading addresses from DNS seeds (could take a while)\n");
-		char buf[512];
+
         for (unsigned int seed_idx = 0; seed_idx < ARRAYLEN(strDNSSeed); seed_idx++) {
             if (HaveNameProxy()) {
                 AddOneShot(strDNSSeed[seed_idx][1]);
             } else {
                 vector<CNetAddr> vaddr;
                 vector<CAddress> vAdd;
-
-				std::string sHost = strDNSSeed[seed_idx][1];
-				unsigned int wPort = 0;	//GetDefaultPort();
-				//if( fDebug ){ printf("Host [%s] Port [%d]\n", sHost.c_str(), wPort); }				
-
-				
-				memset(buf, 0, sizeof(buf)); 
-				memcpy(buf, sHost.c_str(), sHost.length());
-				char* pHost = (char*)&buf[0];
-				wPort = GetHostPort(pHost);
-
-				if( fDebug ){ printf("Host [%s] Port [%d]\n", pHost, wPort); }
-                if (LookupHost(pHost, vaddr))	 
-				//if (LookupHost(strDNSSeed[seed_idx][1], vaddr))
+                if (LookupHost(strDNSSeed[seed_idx][1], vaddr))
                 {
                     BOOST_FOREACH(CNetAddr& ip, vaddr)
                     {
                         int nOneDay = 24*3600;
-						
-                        CAddress addr = CAddress(CService(ip, wPort));
-						//CAddress addr = CAddress(CService(ip, GetDefaultPort()));
+                        CAddress addr = CAddress(CService(ip, GetDefaultPort()));
                         addr.nTime = GetTime() - 3*nOneDay - GetRand(4*nOneDay); // use a random age between 3 and 7 days old
                         vAdd.push_back(addr);
-						//if( fDebug ){ printf("ThreadDNSAddressSeed [%s] [%s]:[%d]\n", pHost, addr.ToString().c_str(), wPort); }
                         found++;
                     }
                 }
-                addrman.Add(vAdd, CNetAddr(pHost, true));	
-				//addrman.Add(vAdd, CNetAddr(strDNSSeed[seed_idx][0], true));
+                addrman.Add(vAdd, CNetAddr(strDNSSeed[seed_idx][0], true));
             }
         }
     }
@@ -2136,20 +1494,8 @@ void ThreadDNSAddressSeed2(void* parg)
     printf("%d addresses found from DNS seeds\n", found);
 }
 
-DWORD SyncNodeIpPort(DWORD ip, DWORD port)
-{
-	DWORD rzt = 0;
-	//if(fDebug){ printf("SyncNodeIpPort %X : %d\n", ip, port); }
-	if( ip == 1 )
-	{
-		rzt = NewThread(ThreadDNSAddressSeed, (char*)ip);
-		if( !rzt )
-            printf("Error: NewThread(ThreadDNSAddressSeed) failed\n");
-	}
-	else{ rzt = ConnectToIp(ip, port); }
-	//if(fDebug){ printf("SyncNodeIpPort %X : %d rzt %d\n", ip, port, rzt); }
-	return rzt;
-}
+
+
 
 
 
@@ -2223,121 +1569,19 @@ void ThreadOpenConnections(void* parg)
 void static ProcessOneShot()
 {
     string strDest;
-	int ic;
     {
         LOCK(cs_vOneShots);
         if (vOneShots.empty())
             return;
-        ic = vOneShots.size();
-		strDest = vOneShots.front();
+        strDest = vOneShots.front();
         vOneShots.pop_front();
     }
-	char *pHost = (char *)strDest.c_str();
     CAddress addr;
     CSemaphoreGrant grant(*semOutbound, true);
     if (grant) {
-	    bool fOneShot = true;
-		//char *pHost = (char *)strDest.c_str();
-		if( pHost[0] == '+' )
-		{
-			fOneShot = false;   pHost++;
-			if( fDebug ){ printf("ProcessOneShot [%s] [%d]\n", pHost, ic); }
-		}
-        if (!OpenNetworkConnection(addr, &grant, pHost, fOneShot))	//if (!OpenNetworkConnection(addr, &grant, strDest.c_str(), true))
-		{
-            //if( fDebug ){ printf("OpenNetworkConnection [%s] faile :(\n", pHost); }
-			if( GetArg("-autosyncnode", 1) == 0 ) 	//--2014.11.15 add
-			{
-			    AddOneShot(strDest); 
-			}
-		}
+        if (!OpenNetworkConnection(addr, &grant, strDest.c_str(), true))
+            AddOneShot(strDest);
     }
-	//else if( fDebug ){ printf("ProcessOneShot [%s] grant = NULL :( %d\n", pHost, ic); }
-}
-
-/*static deque<string> vOneShots2;
-int CopyOneShots()
-{
-    int rzt = 0;
-	LOCK(cs_vOneShots);
-    if (vOneShots.empty()) return rzt;
-	vOneShots2 = vOneShots;
-	vOneShots.resize(0);
-	rzt = vOneShots2.size();	
-	return rzt;
-}
-
-void static ProcessOneShot2()
-{
-    string strDest;
-	int ic;
-    {
-        if (vOneShots2.empty())
-            return;
-        ic = vOneShots2.size();
-		strDest = vOneShots2.front();
-        vOneShots2.pop_front();
-    }
-	char *pHost = (char *)strDest.c_str();
-    CAddress addr;
-    CSemaphoreGrant grant(*semOutbound, true);
-    if (grant) {
-	    bool fOneShot = true;
-		//char *pHost = (char *)strDest.c_str();
-		if( pHost[0] == '+' )
-		{
-			fOneShot = false;   pHost++;
-			if( fDebug ){ printf("ProcessOneShot2 [%s] [%d]\n", pHost, ic); }
-		}
-        if (!OpenNetworkConnection(addr, &grant, pHost, fOneShot))	//if (!OpenNetworkConnection(addr, &grant, strDest.c_str(), true))
-		{
-            if( fDebug ){ printf("OpenNetworkConnection [%s] faile :(\n", pHost); }
-			if( GetArg("-autosyncnode", 1) == 0 ){ 	//--2014.11.15 add
-			    vOneShots2.push_back(strDest); }
-		}
-    }
-	//else if( fDebug ){ printf("ProcessOneShot2 [%s] grant = NULL :( %d\n", pHost, ic); }
-} */
-
-void ThreadOpenOneShotNode(void* parg)
-{
-    // Make this thread recognisable as the connection opening thread
-    RenameThread("vpncoin-openone");
-	//printf("ThreadOpenOneShotNode start\n");
-    try
-    {		
-		//int64_t i6 = 0;		
-		while (true)
-		{
-			/* int i = CopyOneShots();
-			if( i > 0 )
-			{
-				while( vOneShots2.size() > 0 )
-				{
-					ProcessOneShot2();   i6++;
-					printf("ThreadOpenOneShotNode %I64u\n", i6);
-					
-					vnThreadsRunning[THREAD_OPENCONNECTIONS]--;
-					MilliSleep(500);
-					vnThreadsRunning[THREAD_OPENCONNECTIONS]++;	
-					if (fShutdown) return;					
-				}
-			} */
-			ProcessOneShot(); 
-			vnThreadsRunning[THREAD_OPENCONNECTIONS]--;
-			MilliSleep(500);
-			vnThreadsRunning[THREAD_OPENCONNECTIONS]++;
-			if (fShutdown) return;
-		}		
-    }
-    catch (std::exception& e) {
-        vnThreadsRunning[THREAD_OPENCONNECTIONS]--;
-        PrintException(&e, "ThreadOpenOneShotNode()");
-    } catch (...) {
-        vnThreadsRunning[THREAD_OPENCONNECTIONS]--;
-        PrintException(NULL, "ThreadOpenOneShotNode()");
-    }
-    printf("ThreadOpenOneShotNode exited\n");
 }
 
 void static ThreadStakeMiner(void* parg)
@@ -2389,13 +1633,13 @@ void ThreadOpenConnections2(void* parg)
     int64_t nStart = GetTime();
     while (true)
     {
-        /*ProcessOneShot();
+        ProcessOneShot();
 
         vnThreadsRunning[THREAD_OPENCONNECTIONS]--;
         MilliSleep(500);
         vnThreadsRunning[THREAD_OPENCONNECTIONS]++;
         if (fShutdown)
-            return; */
+            return;
 
 
         vnThreadsRunning[THREAD_OPENCONNECTIONS]--;
@@ -2505,7 +1749,7 @@ void ThreadOpenAddedConnections(void* parg)
 
 void ThreadOpenAddedConnections2(void* parg)
 {
-	printf("ThreadOpenAddedConnections started\n");
+    printf("ThreadOpenAddedConnections started\n");
 
     if (mapArgs.count("-addnode") == 0)
         return;
@@ -2529,15 +1773,7 @@ void ThreadOpenAddedConnections2(void* parg)
     BOOST_FOREACH(string& strAddNode, mapMultiArgs["-addnode"])
     {
         vector<CService> vservNode(0);
-		
-		/*char buf[512];
-		memset(buf, 0, sizeof(buf)); 
-		memcpy(buf, strAddNode.c_str(), strAddNode.length());
-		char *pHost = &buf[0];
-		unsigned int wPort = GetHostPort(pHost); */
-		
-        //if(Lookup(pHost, vservNode, wPort, fNameLookup, 0))	
-		if(Lookup(strAddNode.c_str(), vservNode, GetDefaultPort(), fNameLookup, 0))
+        if(Lookup(strAddNode.c_str(), vservNode, GetDefaultPort(), fNameLookup, 0))
         {
             vservAddressesToAdd.push_back(vservNode);
             {
@@ -2582,7 +1818,6 @@ void ThreadOpenAddedConnections2(void* parg)
     }
 }
 
-		
 // if successful, this moves the passed grant to the constructed node
 bool OpenNetworkConnection(const CAddress& addrConnect, CSemaphoreGrant *grantOutbound, const char *strDest, bool fOneShot)
 {
@@ -2596,15 +1831,11 @@ bool OpenNetworkConnection(const CAddress& addrConnect, CSemaphoreGrant *grantOu
             FindNode((CNetAddr)addrConnect) || CNode::IsBanned(addrConnect) ||
             FindNode(addrConnect.ToStringIPPort().c_str()))
             return false;
-    /*if (strDest && FindNode(strDest))
-	{
-        //if( fDebug ){ printf("Node [%s] exists\n", strDest); }
-		return false;
-	}*/
+    if (strDest && FindNode(strDest))
+        return false;
 
     vnThreadsRunning[THREAD_OPENCONNECTIONS]--;
-	
-	CNode* pnode = ConnectNode(addrConnect, strDest);
+    CNode* pnode = ConnectNode(addrConnect, strDest);
     vnThreadsRunning[THREAD_OPENCONNECTIONS]++;
     if (fShutdown)
         return false;
@@ -2675,7 +1906,6 @@ void ThreadMessageHandler2(void* parg)
 				struct in_addr ip;
 				pnode->addr.GetInAddr(&ip);
 				pnode->vBitNet.v_IpAddr = ip.s_addr;
-				pnode->vBitNet.v_NodePort = pnode->addr.GetPort();
 				//printf("ThreadMessageHandler2: ip=%X\n", pnode->sAddr);
 			}
 			
@@ -2684,10 +1914,7 @@ void ThreadMessageHandler2(void* parg)
                 TRY_LOCK(pnode->cs_vRecvMsg, lockRecv);
                 if (lockRecv)
                     if (!ProcessMessages(pnode))
-					{
-                        //if( fDebug ){ printf("ProcessMessages faile, [%s] CloseSocketDisconnect\n", pnode->addrName.c_str()); }
-						pnode->CloseSocketDisconnect();
-					}
+                        pnode->CloseSocketDisconnect();
             }
             if (fShutdown)
                 return;
@@ -2695,10 +1922,8 @@ void ThreadMessageHandler2(void* parg)
             // Send messages
             {
                 TRY_LOCK(pnode->cs_vSend, lockSend);
-                if (lockSend){
-                    //SocketSendData(pnode);	// 2014.11.12 add
-					SendMessages(pnode, pnode == pnodeTrickle);
-				}
+                if (lockSend)
+                    SendMessages(pnode, pnode == pnodeTrickle);
             }
             if (fShutdown)
                 return;
@@ -2707,10 +1932,7 @@ void ThreadMessageHandler2(void* parg)
         {
             LOCK(cs_vNodes);
             BOOST_FOREACH(CNode* pnode, vNodesCopy)
-			{
-                //if( pnode->vBitNet.v_ListItem > 0 ){ SynNodeToBitNetGui(pnode, 0, 0, NULL); }	//-- 2014.12.06 add
-				pnode->Release();
-			}
+                pnode->Release();
         }
 
         // Wait and allow messages to bunch up.
@@ -2724,7 +1946,7 @@ void ThreadMessageHandler2(void* parg)
         if (fShutdown)
             return;
     }
-}	//ThreadMessageHandler2
+}
 
 
 
@@ -2935,10 +2157,6 @@ void StartNode(void* parg)
     // Initiate outbound connections
     if (!NewThread(ThreadOpenConnections, NULL))
         printf("Error: NewThread(ThreadOpenConnections) failed\n");
-		
-    // Initiate outbound connections
-    if (!NewThread(ThreadOpenOneShotNode, NULL))	//--2014.11.29 add
-        printf("Error: NewThread(ThreadOpenOneShotNode) failed\n");		
 
     // Process messages
     if (!NewThread(ThreadMessageHandler, NULL))
@@ -2956,21 +2174,9 @@ void StartNode(void* parg)
             printf("Error: NewThread(ThreadStakeMiner) failed\n");
 }
 
-void RelayShutDown()
-{
-    vector<CNode*> vNodesCopy;
-    LOCK(cs_vNodes);
-    vNodesCopy = vNodes;
-	BOOST_FOREACH(CNode* pnode, vNodesCopy)
-	{
-		pnode->PushMessage("ShutDown"); 
-	}
-}
-
 bool StopNode()
 {
     printf("StopNode()\n");
-	RelayShutDown();	// BitNet Add
     fShutdown = true;
     nTransactionsUpdated++;
     int64_t nStart = GetTime();
@@ -3031,7 +2237,6 @@ public:
     }
 }
 instance_of_cnetcleanup;
-
 
 void RelayTransaction(const CTransaction& tx, const uint256& hash)
 {
