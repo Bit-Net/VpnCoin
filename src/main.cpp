@@ -3131,12 +3131,12 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 		//if( fDebug ){ printf("receive [%s] GetBitNetInf Request, iVer =%d\n", pfrom->addr.ToString().c_str(), pfrom->vBitNet.v_iVersion); }
 		pfrom->PushBitNetInfo(); 
 #endif
-		return true; 
+		//return true; 
 	}
 	else if (strCommand == "BitNetInfAck")	//--2014.11.25 add
 	{ 
 		if( pfrom->vBitNet.v_ReceivedMyBitNetInfo == 0 ){ pfrom->vBitNet.v_ReceivedMyBitNetInfo++; } 
-		return true; 
+		//return true; 
 	}
     else if (strCommand == "verack")
     {
@@ -3156,7 +3156,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 		    //}
 		}
 		//pfrom->vBitNet.v_BitNetMsgCount = pfrom->vBitNet.v_BitNetMsgCount | 1;
-		return true;
+		//return true;
 #endif
     }
 	
@@ -3245,7 +3245,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 		{
 			pfrom->PushSyncBitNetNodeReq();
 		}
-		return true;
+		//return true;
 	}	
 	else if( (strCommand == "vpn-c") || (strCommand == "BitNet-c") )	// chat
 	{
@@ -3280,7 +3280,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 			}
 			SynNodeToBitNetGui(pfrom, 2, dRecvSize, pfrom->vBitNet.v_sTalkMsg.c_str());
 		}
-		return true;
+		//return true;
 	}
 	
 	else if( (strCommand == "vpn-fr") || (strCommand == "BitNet-fr") )	// B: Transaction file Req
@@ -3297,7 +3297,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 				SynNodeToBitNetGui(pfrom, 3, dRecvSize, NULL);	//pfrom->v_File_Req.c_str());	// file req
 			}
 		}
-		return true;
+		//return true;
 	}
 
 	else if( (strCommand == "vpn-fa") || (strCommand == "BitNet-fa") )	// A: Transaction file ACK
@@ -3318,7 +3318,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 			pfrom->vBitNet.v_File_size = 0; 
 			pfrom->vBitNet.v_File_Loc.clear();	//std::string();
 		}
-		return true;
+		//return true;
 	}
 
 	else if( (strCommand == "vpn-fb") || (strCommand == "BitNet-fb") )	// B: Transaction file buf
@@ -3342,7 +3342,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 			}
 		}
 		pfrom->vBitNet.v_Starting_recv = 0;
-		return true;
+		//return true;
 	}
 	
 	else if( (strCommand == "vpn-fc") || (strCommand == "BitNet-fc") )	// A: Transaction file Finish
@@ -3353,7 +3353,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 		pfrom->vBitNet.v_File_size = 0;
 		pfrom->vBitNet.v_File_Loc.clear();	//std::string();
 		SynNodeToBitNetGui(pfrom, 6, iFz, NULL);	// send file finish
-		return true;
+		//return true;
 	}
 	
 	else if( (strCommand == "vpn-pR") || (strCommand == "BitNet-pR") )	// A: socket buf REQ
@@ -3367,7 +3367,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 			vRecv >> pfrom->vBitNet.v_ProxyReqBuf;	//vchKey;
 			SynNodeToBitNetGui(pfrom, 7, dRecvSize, (const char*)&pfrom->vBitNet.v_ProxyReqBuf[0]);	// socket buf
 		}
-		return true;
+		//return true;
 	}
 	else if( (strCommand == "vpn-pA") || (strCommand == "BitNet-pA") )	// B: socket buf ACK
 	{
@@ -3380,7 +3380,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 			vRecv >> pfrom->vBitNet.v_ProxyAckBuf;	//vchKey;
 			SynNodeToBitNetGui(pfrom, 8, dRecvSize, (const char*)&pfrom->vBitNet.v_ProxyAckBuf[0]);	// socket buf
 		}
-		return true;
+		//return true;
 	}
     else if( (strCommand == "BitNet-AR") )	// Req BitNet nodes Sync
 	{
@@ -3395,7 +3395,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 				SynNodeToBitNetGui(pfrom, 10, dRecvSize, NULL);
 			}
 		}
-		return true;
+		//return true;
 	}
 	else if( (strCommand == "BitNet-AA") )	// Sync BitNet Nodes address Ack
 	{
@@ -3430,14 +3430,14 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 				}
 			}
 		}
-		return true;
+		//return true;
 	}
 #endif
 
 	else if( pfrom->vBitNet.v_Network_id != BitNet_Network_id )
 	{ 
 		if( fDebug ){ printf("Node %s Network_id [%d] diff with [%d]\n", pfrom->addr.ToString().c_str(), pfrom->vBitNet.v_Network_id, BitNet_Network_id); }
-		return true; 
+		goto FinalCheck;  //return true;  
 	}
 	
 	else if (strCommand == "addr")
@@ -3986,7 +3986,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         // Ignore unknown commands for extensibility
     }
 
-
+FinalCheck:
     // Update the last seen time for this node's address
     if (pfrom->fNetworkNode)
         if (strCommand == "version" || strCommand == "addr" || strCommand == "inv" || strCommand == "getdata" || strCommand == "ping")
