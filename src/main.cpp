@@ -2195,7 +2195,7 @@ bool CBlock::AcceptBlock()
         if (!IsFinalTx(tx, nHeight, GetBlockTime()))
             return DoS(10, error("AcceptBlock() : contains a non-final transaction"));
 			
-        if( isRejectTransaction(tx) ){ return error("AcceptBlock() : block includes not under rule's tx, ban."); }
+        if( isRejectTransaction(tx) ){ return DoS(10, error("AcceptBlock() : block include not under rule's tx, ban.")); }
 	}
 
     // Check that the block chain matches the known block chain up to a checkpoint
