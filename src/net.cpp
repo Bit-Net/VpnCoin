@@ -81,7 +81,7 @@ CCriticalSection cs_setservAddNodeAddresses;
 
 static CSemaphore *semOutbound = NULL;
 
-int BitNet_Version = 1124;
+int BitNet_Version = 1128;
 int BitNet_Network_id = 1;  // VpnCoin = 1
 
 int GetTotalConnects()
@@ -1231,6 +1231,7 @@ void CNode::copyStats(CNodeStats &stats)
     // Raw ping time is in microseconds, but show it to user as whole seconds (Bitcoin users should be well used to small numbers with many decimal places by now :)
     stats.dPingTime = (((double)nPingUsecTime) / 1e6);
     stats.dPingWait = (((double)nPingUsecWait) / 1e6);
+    stats.IsGuiNode = vBitNet.v_IsGuiNode;
 }
 #undef X
 

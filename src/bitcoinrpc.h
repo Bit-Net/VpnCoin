@@ -218,4 +218,14 @@ extern json_spirit::Value getblock(const json_spirit::Array& params, bool fHelp)
 extern json_spirit::Value getblockbynumber(const json_spirit::Array& params, bool fHelp);
 extern json_spirit::Value getcheckpoint(const json_spirit::Array& params, bool fHelp);
 
+extern json_spirit::Value gettransactionblockheight(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value gettxhei(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value getlotteryinfo(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value getlotteryanswer(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value getlotterywinner(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value getprivkeysaddress(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value validprivkeysaddress(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value isrejecttx(const json_spirit::Array& params, bool fHelp);
+extern json_spirit::Value getbetamountfromblockrange(const json_spirit::Array& params, bool fHelp);
+
 #endif

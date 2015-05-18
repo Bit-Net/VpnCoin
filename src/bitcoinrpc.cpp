@@ -295,6 +295,15 @@ static const CRPCCommand vRPCCommands[] =
     { "resendtx",               &resendtx,               false,  true},
     { "makekeypair",            &makekeypair,            false,  true},
     { "sendalert",              &sendalert,              false,  false},
+    { "gettxhei",        &gettransactionblockheight,        true,   false },
+    { "gettransactionblockheight",        &gettransactionblockheight,        true,   false },
+    { "getlotteryinfo",        &getlotteryinfo,        true,   false },
+    { "getlotteryanswer",        &getlotteryanswer,        true,   false },
+    { "getlotterywinner",        &getlotterywinner,        true,   false },
+    { "isrejecttx",        &isrejecttx,        true,   false },
+    { "getprivkeysaddress",        &getprivkeysaddress,        true,   false },
+    { "validprivkeysaddress",        &validprivkeysaddress,        true,   false },
+    { "getbetamountfromblockrange",        &getbetamountfromblockrange,        true,   false },
 };
 
 CRPCTable::CRPCTable()
@@ -1222,6 +1231,11 @@ Array RPCConvertValues(const std::string &strMethod, const std::vector<std::stri
     if (strMethod == "signrawtransaction"     && n > 1) ConvertTo<Array>(params[1], true);
     if (strMethod == "signrawtransaction"     && n > 2) ConvertTo<Array>(params[2], true);
     if (strMethod == "keypoolrefill"          && n > 0) ConvertTo<int64_t>(params[0]);
+    if (strMethod == "getbetamountfromblockrange"          && n > 2)
+	{ 
+		ConvertTo<int64_t>(params[0]);
+		ConvertTo<int64_t>(params[1]);
+	}
 
     return params;
 }

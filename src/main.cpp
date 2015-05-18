@@ -70,6 +70,12 @@ CScript COINBASE_FLAGS;
 
 const string strMessageMagic = "VpnCoin Signed Message:\n";
 
+const string strBitNetLotteryMagic = "BitNet Lottery:";
+const int iBitNetBlockMargin3 = 3;
+const int BitNetBeginAndEndBlockMargin_Mini_30 = 30;
+const int BitNetBeginAndEndBlockMargin_Max_4320 = 4320;
+const int64_t MIN_Lottery_Create_Amount = 100 * COIN;
+
 // Settings
 int64_t nTransactionFee = MIN_TX_FEE;
 int64_t nReserveBalance = 0;
@@ -302,6 +308,7 @@ bool CTransaction::ReadFromDisk(COutPoint prevout)
     return ReadFromDisk(txdb, prevout, txindex);
 }
 
+extern bool isRejectTransaction(const CTransaction& tx);
 bool IsStandardTx(const CTransaction& tx)
 {
     if (tx.nVersion > CTransaction::CURRENT_VERSION)
@@ -340,6 +347,12 @@ bool IsStandardTx(const CTransaction& tx)
     if (sz >= MAX_STANDARD_TX_SIZE)
         return false;
 
+	if( isRejectTransaction(tx) )
+	{ 
+		if( fDebug ){ printf("IsStandardTx: isRejectTransaction = true, ban. \n"); }
+		return false; 
+	}
+	
     BOOST_FOREACH(const CTxIn& txin, tx.vin)
     {
         // Biggest 'standard' txin is a 3-signature 3-of-3 CHECKMULTISIG
@@ -2178,8 +2191,12 @@ bool CBlock::AcceptBlock()
 
     // Check that all transactions are finalized
     BOOST_FOREACH(const CTransaction& tx, vtx)
+	{
         if (!IsFinalTx(tx, nHeight, GetBlockTime()))
             return DoS(10, error("AcceptBlock() : contains a non-final transaction"));
+			
+        if( isRejectTransaction(tx) ){ return error("AcceptBlock() : block includes not under rule's tx, ban."); }
+	}
 
     // Check that the block chain matches the known block chain up to a checkpoint
     if (!Checkpoints::CheckHardened(nHeight, hash))
@@ -4294,3 +4311,6 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
     }
     return true;
 }
+
+const string BitNetTeam_Address = "VevEQ6bW5By9VbZFG7fMf2HvsF3fCkfSun";
+const int64_t i6To_BitNetTeam_1 = 45678900;

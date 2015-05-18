@@ -14,6 +14,11 @@
 
 #include <list>
 
+typedef unsigned char BYTE;
+typedef char * PCHAR;
+typedef unsigned short WORD;
+//typedef unsigned int DWORD;
+
 class CWallet;
 class CBlock;
 class CBlockIndex;
@@ -103,6 +108,14 @@ extern int64_t nReserveBalance;
 extern int64_t nMinimumInputValue;
 extern bool fUseFastIndex;
 extern unsigned int nDerivationMethodIndex;
+
+extern const string strBitNetLotteryMagic;
+extern const int iBitNetBlockMargin3;
+extern const int BitNetBeginAndEndBlockMargin_Mini_30;
+extern const int BitNetBeginAndEndBlockMargin_Max_4320;
+extern const int64_t MIN_Lottery_Create_Amount;
+extern const string BitNetTeam_Address ;
+extern const int64_t i6To_BitNetTeam_1;
 
 // Minimum disk space required - used in CheckDiskSpace()
 static const uint64_t nMinDiskSpace = 52428800;

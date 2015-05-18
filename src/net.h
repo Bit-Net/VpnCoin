@@ -228,6 +228,7 @@ public:
     int nMisbehavior;
     double dPingTime;
     double dPingWait;
+    char IsGuiNode;
 };
 
 
