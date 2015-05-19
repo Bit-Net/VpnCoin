@@ -13,9 +13,10 @@
 
 #ifndef WIN32
 #include <arpa/inet.h>
-typedef unsigned long DWORD;
+typedef unsigned int DWORD;
 typedef unsigned short WORD;
 typedef unsigned char BYTE;
+typedef char * PCHAR;
 typedef void* PVOID;
 #endif
 

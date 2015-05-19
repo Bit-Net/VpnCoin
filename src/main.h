@@ -14,10 +14,6 @@
 
 #include <list>
 
-typedef unsigned char BYTE;
-typedef char * PCHAR;
-typedef unsigned short WORD;
-//typedef unsigned int DWORD;
 
 class CWallet;
 class CBlock;
