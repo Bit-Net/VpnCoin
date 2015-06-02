@@ -2822,8 +2822,8 @@ This label turns red, if the priority is smaller than &quot;medium&quot;.
     </message>
     <message>
         <location line="+6"/>
-        <source>Listen for connections on &lt;port&gt; (default: 920 or testnet: 1920)</source>
-        <translation>监听&lt;port&gt;端口的连接 (默认: 920 测试网: 1920)</translation>
+        <source>Listen for connections on &lt;port&gt; (default: 1920 or testnet: 2920)</source>
+        <translation>监听&lt;port&gt;端口的连接 (默认: 1920 测试网: 2920)</translation>
     </message>
     <message>
         <location line="+1"/>

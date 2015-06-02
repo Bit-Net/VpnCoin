@@ -2688,8 +2688,8 @@ This label turns red, if the priority is smaller than &quot;medium&quot;.
     </message>
     <message>
         <location line="+6"/>
-        <source>Listen for connections on &lt;port&gt; (default: 920 or testnet: 1920)</source>
-        <translation>Listen for connections on &lt;port&gt; (default: 920 or testnet: 1920)</translation>
+        <source>Listen for connections on &lt;port&gt; (default: 1920 or testnet: 2920)</source>
+        <translation>Listen for connections on &lt;port&gt; (default: 1920 or testnet: 2920)</translation>
     </message>
     <message>
         <location line="+1"/>

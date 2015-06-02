@@ -2675,8 +2675,8 @@ Cela implique que des frais à hauteur d&apos;au moins %2 seront nécessaires.</
     </message>
     <message>
         <location line="+6"/>
-        <source>Listen for connections on &lt;port&gt; (default: 920 or testnet: 1920)</source>
-        <translation>Écouter les connexions sur le &lt;port&gt; (par défault: 920 ou testnet: 1920)</translation>
+        <source>Listen for connections on &lt;port&gt; (default: 1920 or testnet: 2920)</source>
+        <translation>Écouter les connexions sur le &lt;port&gt; (par défault: 1920 ou testnet: 2920)</translation>
     </message>
     <message>
         <location line="+1"/>

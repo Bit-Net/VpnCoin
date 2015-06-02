@@ -2675,8 +2675,8 @@ Dit betekend dat een fee van %2 is vereist.</translation>
     </message>
     <message>
         <location line="+6"/>
-        <source>Listen for connections on &lt;port&gt; (default: 920 or testnet: 1920)</source>
-        <translation>Luister voor verbindingen op &lt;poort&gt; (standaard: 920 of testnet: 1920)</translation>
+        <source>Listen for connections on &lt;port&gt; (default: 1920 or testnet: 2920)</source>
+        <translation>Luister voor verbindingen op &lt;poort&gt; (standaard: 1920 of testnet: 2920)</translation>
     </message>
     <message>
         <location line="+1"/>

@@ -2676,8 +2676,8 @@ Les montants inférieurs à  0.546 fois les frais minimum de relais apparaissent
     </message>
     <message>
         <location line="+6"/>
-        <source>Listen for connections on &lt;port&gt; (default: 920 or testnet: 1920)</source>
-        <translation>Écouter les connexions sur le &lt;port&gt; (default: 920 or testnet: 1920)</translation>
+        <source>Listen for connections on &lt;port&gt; (default: 1920 or testnet: 2920)</source>
+        <translation>Écouter les connexions sur le &lt;port&gt; (default: 1920 or testnet: 2920)</translation>
     </message>
     <message>
         <location line="+1"/>
