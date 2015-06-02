@@ -97,6 +97,7 @@ double GetPoSKernelPS();
 QPixmap* pixmapBitNet = 0;
 QPixmap* pixmap = 0; 
 int bShowBg = 0;
+double dOpacity=0.2;
 
 #ifdef USE_SUPERNET		//2014.12.19 Bit_Lee
 QWebView *supNet_view = NULL;
@@ -326,6 +327,9 @@ BitcoinGUI::BitcoinGUI(QWidget *parent):
 	
 	if( bShowBg )
 	{
+		dOpacity = GetArg("-bgopacity", 12) * 0.01;
+		this->setStyleSheet("menuBar{background:transparent;} QMenuBar{background:transparent;}");	//-- 2014.12.19   Bit_Lee
+		centralWidget->setStyleSheet("QWebView{background:transparent;} OverviewPage{background:transparent;} QStackedWidget{background:transparent;} QFrame{background:transparent;} menuBar{background:transparent;} QMenuBar{background:transparent;}");	
 		std::string sLab = GetArg("-vpnbg", "Res/vpncoin.png");
 		QString qImg = QString::fromStdString(sLab);
 		pixmapBitNet = new QPixmap(qImg);
@@ -1247,6 +1251,7 @@ void BitcoinGUI::paintEvent( QPaintEvent* pe )
 		if( bpixInit && (pixmap != NULL) && (!pixmap->isNull()) )
 		{
 			QPainter painter(this);
+			painter.setOpacity(dOpacity);
 			painter.setRenderHint(QPainter::SmoothPixmapTransform);	
 			painter.drawPixmap(0, 0, *pixmap);
 		}
