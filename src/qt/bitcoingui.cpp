@@ -77,7 +77,6 @@
 #include <QDesktopWidget>
 #include <QListWidget>
 #include <iostream>
-#include <qsystemtrayicon>
 #include <QToolButton>
 
 class QSystemTrayIconPrivate;

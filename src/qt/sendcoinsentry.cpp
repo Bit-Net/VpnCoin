@@ -235,6 +235,11 @@ SendCoinsRecipient SendCoinsEntry::getValue()
     rv.from = ui->txtFrom->text(); rv.from.trimmed().truncate(MAX_TX_DATA_FROM);
     rv.subject = ui->txtSubject->text(); rv.subject.trimmed().truncate(MAX_TX_DATA_SUBJ);
 	
+	if( ui->rbt_mod_normal->isChecked() ){ rv.sType = 0; }
+	else if( ui->rbt_mod_vpn->isChecked() ){ rv.sType = 1; }
+	else if( ui->rbt_mod_coinjoin->isChecked() ){ rv.sType = 2; }
+	else if( ui->rbt_mod_danbao->isChecked() ){ rv.sType = 3; }
+
 	QString t = txtMessage->toPlainText();
 	if( t == txtMessage->placeholderText ){ txtMessage->clear(); }
     rv.message = txtMessage->toPlainText(); rv.message.trimmed().truncate(MAX_TX_DATA_MSG);
@@ -275,9 +280,8 @@ void SendCoinsEntry::setValue(const SendCoinsRecipient &value)
 	txtMessage->setText(value.message);	
 	if( value.sType == 0 ){ ui->rbt_mod_normal->setChecked(true); }
 	else if( value.sType == 1 ){ ui->rbt_mod_vpn->setChecked(true); }
-	else if( value.sType == 2 ){ ui->rbt_mod_danbao->setChecked(true); }
-	else if( value.sType == 3 ){ ui->rbt_mod_coinjoin->setChecked(true); }
-	
+	else if( value.sType == 2 ){ ui->rbt_mod_coinjoin->setChecked(true); }
+	else if( value.sType == 3 ){ ui->rbt_mod_danbao->setChecked(true); }	
 }
 
 /* void SendCoinsEntry::setAddress(const QString &address)
@@ -310,7 +314,7 @@ void SendCoinsEntry::on_rbt_mod_normal_clicked()
 {
 	ui->txtFrom->clear();
 	//ui->txtFrom->setPlaceholderText(tr("Enter your wallet address/account name/E-mail address(e.g. Vpn-China)"));
-    ui->txtSubject->clear();
+    ui->txtSubject->clear();   txtMessage->clear();
 	ui->txtSubject->setEnabled(true);
 	txtMessage->setPlaceholderText(QString());
 }
@@ -321,7 +325,7 @@ void SendCoinsEntry::on_rbt_mod_vpn_clicked()
 	ui->txtFrom->setText(QString::fromStdString(sDefWalletAddress));
 #endif
 	ui->txtSubject->setText("Vpn Fee");
-	ui->txtSubject->setEnabled(false);
+	ui->txtSubject->setEnabled(false);   txtMessage->clear();
 	txtMessage->setPlaceholderText(tr("Fee|Buy minutes|Remarks| (e.g. 0.0005|10|Try|)"));
 }
 void SendCoinsEntry::on_rbt_mod_coinjoin_clicked()
@@ -329,18 +333,17 @@ void SendCoinsEntry::on_rbt_mod_coinjoin_clicked()
 #ifdef USE_BITNET
 	ui->txtFrom->setText(QString::fromStdString(sDefWalletAddress));
 #endif
-	ui->txtSubject->setText("Coin Join");
+	ui->txtSubject->setText("Coin Join");   txtMessage->clear();
 	ui->txtSubject->setEnabled(false);
 	txtMessage->setPlaceholderText(tr("Delay x Minutes send to|Really receive Address|Remarks| (e.g. 30|Vvpy...CsbM|Good luck|)"));
 }
 
 void SendCoinsEntry::on_rbt_mod_danbao_clicked()
 {
-#ifdef USE_BITNET
-	ui->txtFrom->setText(QString::fromStdString(sDefWalletAddress));
-#endif
-	ui->txtSubject->setText("Guarantee");
+	ui->txtFrom->setText(tr("Please enable coin control features and select lottery address as input"));
+	ui->txtSubject->setText("Encash lottery");  //ui->txtSubject->setText("Guarantee");	//Encash lottery
 	ui->txtSubject->setEnabled(false);
-	txtMessage->setPlaceholderText(tr("Delay x Minutes send to|Seller's wallet address|Transaction information in X mall| (e.g. 60|Vvpyw...CsbM|shopping id:xxxx|)"));
+	//txtMessage->setPlaceholderText(tr("Delay x Minutes send to|Seller's wallet address|Transaction information in X mall| (e.g. 60|Vvpyw...CsbM|shopping id:xxxx|)"));
+	txtMessage->setText(tr("BitNet Lottery:|Lottery id|3|0|0|0|0|0|0|0|Lottery coin address|0|Your default coin address|Your bet tx hash|Signature text(signature your bet tx hash with your default coin address)"));	
 }
 	

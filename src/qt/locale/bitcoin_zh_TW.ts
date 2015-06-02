@@ -4,12 +4,12 @@
     <message>
         <location filename="../forms/aboutdialog.ui" line="+14"/>
         <source>About VpnCoin</source>
-        <translation>關于V幣</translation>
+        <translation>關于微幣</translation>
     </message>
     <message>
         <location line="+39"/>
         <source>&lt;b&gt;VpnCoin&lt;/b&gt; version</source>
-        <translation>&lt;b&gt;V幣客戶端&lt;/b&gt; 版本</translation>
+        <translation>&lt;b&gt;微幣客戶端&lt;/b&gt; 版本</translation>
     </message>
     <message>
         <location line="+41"/>
@@ -66,7 +66,7 @@ This product includes software developed by the OpenSSL Project for use in the O
     <message>
         <location line="-46"/>
         <source>These are your VpnCoin addresses for receiving payments. You may want to give a different one to each sender so you can keep track of who is paying you.</source>
-        <translation>這是您用來接收支付的V幣地址列表。爲不同的支付方建立不同的地址以便于了解支付來源。</translation>
+        <translation>這是您用來接收支付的微幣地址列表。爲不同的支付方建立不同的地址以便于了解支付來源。</translation>
     </message>
     <message>
         <location line="+60"/>
@@ -81,7 +81,7 @@ This product includes software developed by the OpenSSL Project for use in the O
     <message>
         <location line="+11"/>
         <source>Sign a message to prove you own a VpnCoin address</source>
-        <translation>對信息進行簽名以證明您對該V幣地址的所有權</translation>
+        <translation>對信息進行簽名以證明您對該微幣地址的所有權</translation>
     </message>
     <message>
         <location line="+3"/>
@@ -96,7 +96,7 @@ This product includes software developed by the OpenSSL Project for use in the O
     <message>
         <location line="-14"/>
         <source>Verify a message to ensure it was signed with a specified VpnCoin address</source>
-        <translation>驗證信息以保證其經過指定V幣地址的簽名</translation>
+        <translation>驗證信息以保證其經過指定微幣地址的簽名</translation>
     </message>
     <message>
         <location line="+3"/>
@@ -237,7 +237,7 @@ This product includes software developed by the OpenSSL Project for use in the O
     <message>
         <location line="+1"/>
         <source>Warning: If you encrypt your wallet and lose your passphrase, you will &lt;b&gt;LOSE ALL OF YOUR COINS&lt;/b&gt;!</source>
-        <translation>警告：如果您丟失了加密該錢包的密碼，其中所有的V幣將會丟失！</translation>
+        <translation>警告：如果您丟失了加密該錢包的密碼，其中所有的微幣將會丟失！</translation>
     </message>
     <message>
         <location line="+0"/>
@@ -264,7 +264,7 @@ This product includes software developed by the OpenSSL Project for use in the O
     <message>
         <location line="-58"/>
         <source>VpnCoin will close now to finish the encryption process. Remember that encrypting your wallet cannot fully protect your coins from being stolen by malware infecting your computer.</source>
-        <translation>V幣客戶端即將關閉以完成加密過程。請記住，加密錢包並不能完全防止您的電子貨幣被入侵您計算機的木馬軟件盜竊。</translation>
+        <translation>微幣客戶端即將關閉以完成加密過程。請記住，加密錢包並不能完全防止您的電子貨幣被入侵您計算機的木馬軟件盜竊。</translation>
     </message>
     <message>
         <location line="+13"/>
@@ -353,7 +353,7 @@ This product includes software developed by the OpenSSL Project for use in the O
     <message>
         <location line="-13"/>
         <source>&amp;Receive coins</source>
-        <translation>接收V幣(&amp;R) </translation>
+        <translation>接收微幣(&amp;R) </translation>
     </message>
     <message>
         <location line="+1"/>
@@ -363,7 +363,7 @@ This product includes software developed by the OpenSSL Project for use in the O
     <message>
         <location line="-7"/>
         <source>&amp;Send coins</source>
-        <translation>發送V幣(&amp;S) </translation>
+        <translation>發送微幣(&amp;S) </translation>
     </message>
     <message>
         <location line="+35"/>
@@ -378,7 +378,7 @@ This product includes software developed by the OpenSSL Project for use in the O
     <message>
         <location line="+4"/>
         <source>Show information about VpnCoin</source>
-        <translation>關于V幣 </translation>
+        <translation>關于微幣 </translation>
     </message>
     <message>
         <location line="+2"/>
@@ -428,7 +428,7 @@ This product includes software developed by the OpenSSL Project for use in the O
     <message>
         <location line="-62"/>
         <source>Send coins to a VpnCoin address</source>
-        <translation>向指定的地址發送V幣</translation>
+        <translation>向指定的地址發送微幣</translation>
     </message>
     <message>
         <location line="+45"/>
@@ -472,8 +472,43 @@ This product includes software developed by the OpenSSL Project for use in the O
     </message>
     <message>
         <location line="+1"/>
-        <source>Open BitNet center</source>
-        <translation>打开币联网中心</translation>
+        <source>Enter BitNet</source>
+        <translation>进入币联网</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Enter Coin Website</source>
+        <translation>进入微币网站</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Enter SuperNet</source>
+        <translation>进入超网</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Run SuperNet App</source>
+        <translation>运行超网程序</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Press F5 to refresh</source>
+        <translation>按F5刷新</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Browser</source>
+        <translation>浏览器</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Open BitNet Browser</source>
+        <translation>运行币联网浏览器</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Show Menu</source>
+        <translation>显示菜单</translation>
     </message>
     <message>
         <location line="-5"/>
@@ -550,12 +585,12 @@ This product includes software developed by the OpenSSL Project for use in the O
         <location line="+0"/>
         <location line="+60"/>
         <source>VpnCoin client</source>
-        <translation>V幣客戶端</translation>
+        <translation>微幣客戶端</translation>
     </message>
     <message numerus="yes">
         <location line="+70"/>
         <source>%n active connection(s) to VpnCoin network</source>
-        <translation><numerusform>與V幣網絡建立了 %n 個連接</numerusform></translation>
+        <translation><numerusform>與微幣網絡建立了 %n 個連接</numerusform></translation>
     </message>
     <message>
         <location line="+40"/>

@@ -17,7 +17,7 @@ QString TransactionDesc::GetTxMessage(const CWalletTx& wtx)
     std::string stxData = wtx.vpndata;
     if (!stxData.empty())
     {
-        if (stxData.find("@FROM=") != std::string::npos || stxData.find("@SUBJ=") != std::string::npos || stxData.find("@MSG=") != std::string::npos)
+        if( (stxData.find("@FROM=") != std::string::npos) || (stxData.find("@SUBJ=") != std::string::npos) || (stxData.find("@MSG=") != std::string::npos) || (stxData.find("BitNet Lottery:") == 0) )
         {
             //stxData = stxData.replace("@", " ");
             return stxData.c_str();
@@ -28,7 +28,7 @@ QString TransactionDesc::GetTxMessage(const CWalletTx& wtx)
             SimpleCrypt processSimpleCrypt((quint64)wtx.nTime);
             //SimpleCrypt processSimpleCrypt(i6);
             stxData = processSimpleCrypt.decryptToString(QString(stxData.c_str())).toStdString();
-            if (stxData.find("@FROM=") != std::string::npos || stxData.find("@SUBJ=") != std::string::npos || stxData.find("@MSG=") != std::string::npos)
+            //if (stxData.find("@FROM=") != std::string::npos || stxData.find("@SUBJ=") != std::string::npos || stxData.find("@MSG=") != std::string::npos)
                 return stxData.c_str();
         }
     }

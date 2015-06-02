@@ -293,16 +293,16 @@
         </widget>
        </item>
        <item>
-        <widget class="QRadioButton" name="rbt_mod_danbao">
+        <widget class="QRadioButton" name="rbt_mod_coinjoin">
          <property name="text">
-          <string>Guarantee</string>
+          <string>Coin Join</string>
          </property>
         </widget>
        </item>
        <item>
-        <widget class="QRadioButton" name="rbt_mod_coinjoin">
+        <widget class="QRadioButton" name="rbt_mod_danbao">
          <property name="text">
-          <string>Coin Join</string>
+          <string>Encash Lottery</string>
          </property>
         </widget>
        </item>

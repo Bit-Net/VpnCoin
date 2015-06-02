@@ -31,7 +31,7 @@ public:
     QString from;
     QString subject;
     QString message;
-	DWORD sType;
+    int sType;
 };
 
 /** Interface to Bitcoin wallet from Qt view code. */
