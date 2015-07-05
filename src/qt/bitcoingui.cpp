@@ -1342,7 +1342,7 @@ void BitcoinGUI::gotoSupNetClicked()
 		string sCoinAddr = GetDefaultWalletAddress1();
 		string sRpcUser = mapArgs["-rpcuser"];
 		string sPwd = mapArgs["-rpcpassword"]; 
-		sSuperNetUrl = strprintf("http://localhost:7876/index.html?address=%s&rpcuser=%s&rpcpassword=%s&rpcport=%d", sCoinAddr.c_str(), sRpcUser.c_str(), sPwd.c_str(), GetArg("-rpcport", 921)); 
+		sSuperNetUrl = strprintf("http://localhost:7876/index.html?address=%s&rpcuser=%s&rpcpassword=%s&rpcport=%d", sCoinAddr.c_str(), sRpcUser.c_str(), sPwd.c_str(), GetArg("-rpcport", 1921)); 
 	}	
 	if( (bSupNetViewOk == false) && (supNet_view != NULL) )
 	{

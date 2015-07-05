@@ -213,12 +213,8 @@ void ThreadIRCSeed2(void* parg)
     if (mapArgs.count("-connect") && fNoListen)
         return;
 
-#ifndef QT_GUI
     // ... or if IRC is not enabled.
-    if (!GetBoolArg("-irc", true)){ return; }
-#else
 	if (!GetBoolArg("-irc", false)){ return; }
-#endif
 
     printf("ThreadIRCSeed started\n");
     int nErrorWait = 10;

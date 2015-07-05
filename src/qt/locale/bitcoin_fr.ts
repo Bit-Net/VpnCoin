@@ -2735,8 +2735,8 @@ Cela implique que des frais à hauteur d&apos;au moins %2 seront nécessaires.</
     </message>
     <message>
         <location line="-87"/>
-        <source>Listen for JSON-RPC connections on &lt;port&gt; (default: 921 or testnet: 1921)</source>
-        <translation>Écouter les connexions JSON-RPC sur le &lt;port&gt; (default: 921 or testnet: 1921)</translation>
+        <source>Listen for JSON-RPC connections on &lt;port&gt; (default: 1921 or testnet: 2921)</source>
+        <translation>Écouter les connexions JSON-RPC sur le &lt;port&gt; (default: 1921 or testnet: 2921)</translation>
     </message>
     <message>
         <location line="-11"/>

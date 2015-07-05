@@ -2735,8 +2735,8 @@ Acest lucru înseamnă că o taxă de cel puțin %2 este necesară</translation>
     </message>
     <message>
         <location line="-87"/>
-        <source>Listen for JSON-RPC connections on &lt;port&gt; (default: 921 or testnet: 1921)</source>
-        <translation>Ascultă pentru conexiuni JSON-RPC pe &lt;port&gt; (implicit:921 sau testnet: 1921)</translation>
+        <source>Listen for JSON-RPC connections on &lt;port&gt; (default: 1921 or testnet: 2921)</source>
+        <translation>Ascultă pentru conexiuni JSON-RPC pe &lt;port&gt; (implicit:921 sau testnet: 2921)</translation>
     </message>
     <message>
         <location line="-11"/>

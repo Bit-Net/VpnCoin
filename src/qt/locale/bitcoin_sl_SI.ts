@@ -2733,7 +2733,7 @@ Ta oznaka se obarva rdeče, če je prioriteta manjša kot &quot;srednja&quot;.
     </message>
     <message>
         <location line="-87"/>
-        <source>Listen for JSON-RPC connections on &lt;port&gt; (default: 921 or testnet: 1921)</source>
+        <source>Listen for JSON-RPC connections on &lt;port&gt; (default: 1921 or testnet: 2921)</source>
         <translation>Sprejmi povezave na &lt;port&gt; (privzeta vrata: 1920 ali testnet: 2920) </translation>
     </message>
     <message>

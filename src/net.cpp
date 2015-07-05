@@ -920,12 +920,9 @@ void CNode::PushVersion()
 	this->ssSend << PROTOCOL_VERSION << nLocalServices << nTime << addrYou << addrMe;
     this->ssSend << nLocalHostNonce << FormatSubVersion(CLIENT_NAME, CLIENT_VERSION, std::vector<string>()) << nBestHeight << BitNet_Version;
 	this->ssSend << BitNet_Network_id;
-	unsigned short wPort = 0;
+	unsigned short wPort = GetListenPort();
 	unsigned char bIsGui = 0;	// 2014.12.18 add
 	
-#ifdef USE_BITNET
-	wPort = GetListenPort();
-#endif
 
 #ifdef QT_GUI
     bIsGui++;
@@ -2028,26 +2025,26 @@ void MapPort()
 // The first name is used as information source for addrman.
 // The second name should resolve to a list of seed addresses.
 static const char *strDNSSeed[][20] = {
-    {"s1.vpncoin.org", "seed.vpncoin.org:920"},
-    {"s2.vpncoin.org", "node.vpncoin.org:920"},
-    {"s3.vpncoin.org", "pool.vpncoin.org:920"},
-	{"s4.vpncoin.org", "s4.vpncoin.org:920"},
-	{"s5.vpncoin.org", "s5.vpncoin.org:920"},
-	{"s6.vpncoin.org", "s6.vpncoin.org:920"},
-	{"s7.vpncoin.org", "s7.vpncoin.org:920"},
-	{"s8.vpncoin.org", "s8.vpncoin.org:920"},
-	{"s9.vpncoin.org", "s9.vpncoin.org:920"},	
-	{"sa.vpncoin.org", "abe.vpncoin.org:920"},
-	{"sf.vpncoin.org", "faucet.vpncoin.org:920"},
-    {"s1.bitnet.wang", "s1.bitnet.wang:920"},
-    {"s2.bitnet.wang", "s2.bitnet.wang:920"},
-    {"s3.bitnet.wang", "s3.bitnet.wang:920"},
-	{"s4.bitnet.wang", "s4.bitnet.wang:920"},
-	{"s5.bitnet.wang", "s5.bitnet.wang:920"},
-	{"s6.bitnet.wang", "s6.bitnet.wang:920"},
-	{"s7.bitnet.wang", "s7.bitnet.wang:920"},
-	{"s8.bitnet.wang", "s8.bitnet.wang:920"},
-	{"s9.bitnet.wang", "s9.bitnet.wang:920"},
+    {"s1.vpncoin.org", "seed.vpncoin.org"},
+    {"s2.vpncoin.org", "node.vpncoin.org"},
+    {"s3.vpncoin.org", "pool.vpncoin.org"},
+	{"s4.vpncoin.org", "s4.vpncoin.org"},
+	{"s5.vpncoin.org", "s5.vpncoin.org"},
+	{"s6.vpncoin.org", "s6.vpncoin.org"},
+	{"s7.vpncoin.org", "s7.vpncoin.org"},
+	{"s8.vpncoin.org", "s8.vpncoin.org"},
+	{"s9.vpncoin.org", "s9.vpncoin.org"},	
+	{"sa.vpncoin.org", "abe.vpncoin.org"},
+	{"sf.vpncoin.org", "faucet.vpncoin.org"},
+    {"s1.bitnet.wang", "s1.bitnet.wang"},
+    {"s2.bitnet.wang", "s2.bitnet.wang"},
+    {"s3.bitnet.wang", "s3.bitnet.wang"},
+	{"s4.bitnet.wang", "s4.bitnet.wang"},
+	{"s5.bitnet.wang", "s5.bitnet.wang"},
+	{"s6.bitnet.wang", "s6.bitnet.wang"},
+	{"s7.bitnet.wang", "s7.bitnet.wang"},
+	{"s8.bitnet.wang", "s8.bitnet.wang"},
+	{"s9.bitnet.wang", "s9.bitnet.wang"},
 };
 
 void ThreadDNSAddressSeed(void* parg)
@@ -2238,16 +2235,21 @@ void static ProcessOneShot()
     CSemaphoreGrant grant(*semOutbound, true);
     if (grant) {
 	    bool fOneShot = true;
+		bool fAdd = true;
 		//char *pHost = (char *)strDest.c_str();
 		if( pHost[0] == '+' )
 		{
 			fOneShot = false;   pHost++;
 			if( fDebug ){ printf("ProcessOneShot [%s] [%d]\n", pHost, ic); }
 		}
+		else if( pHost[0] == '-' )
+		{
+			fOneShot = false;   pHost++;  fAdd = false;
+		}
         if (!OpenNetworkConnection(addr, &grant, pHost, fOneShot))	//if (!OpenNetworkConnection(addr, &grant, strDest.c_str(), true))
 		{
             //if( fDebug ){ printf("OpenNetworkConnection [%s] faile :(\n", pHost); }
-			if( GetArg("-autosyncnode", 1) == 0 ) 	//--2014.11.15 add
+			if( fAdd && (GetArg("-autosyncnode", 1) == 0) ) 	//--2014.11.15 add
 			{
 			    AddOneShot(strDest); 
 			}

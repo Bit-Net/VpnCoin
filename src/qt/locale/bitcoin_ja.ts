@@ -2734,8 +2734,8 @@ This label turns red, if the priority is smaller than &quot;medium&quot;.
     </message>
     <message>
         <location line="-87"/>
-        <source>Listen for JSON-RPC connections on &lt;port&gt; (default: 921 or testnet: 1921)</source>
-        <translation>&lt;port&gt; で JSON-RPC 接続をリスン (デフォルト: 921かtestnet は 1921)</translation>
+        <source>Listen for JSON-RPC connections on &lt;port&gt; (default: 1921 or testnet: 2921)</source>
+        <translation>&lt;port&gt; で JSON-RPC 接続をリスン (デフォルト: 921かtestnet は 2921)</translation>
     </message>
     <message>
         <location line="-11"/>
