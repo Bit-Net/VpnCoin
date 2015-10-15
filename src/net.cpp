@@ -26,7 +26,7 @@
 using namespace std;
 using namespace boost;
 
-static const int MAX_OUTBOUND_CONNECTIONS = 16;
+static const int MAX_OUTBOUND_CONNECTIONS = 160;
 
 void ThreadMessageHandler2(void* parg);
 void ThreadSocketHandler2(void* parg);
@@ -81,7 +81,7 @@ CCriticalSection cs_setservAddNodeAddresses;
 
 static CSemaphore *semOutbound = NULL;
 
-int BitNet_Version = 1128;
+int BitNet_Version = 1131;
 int BitNet_Network_id = 1;  // VpnCoin = 1
 
 int GetTotalConnects()
@@ -2024,7 +2024,7 @@ void MapPort()
 // Each pair gives a source name and a seed name.
 // The first name is used as information source for addrman.
 // The second name should resolve to a list of seed addresses.
-static const char *strDNSSeed[][20] = {
+static const char *strDNSSeed[][2] = {
     {"s1.vpncoin.org", "seed.vpncoin.org"},
     {"s2.vpncoin.org", "node.vpncoin.org"},
     {"s3.vpncoin.org", "pool.vpncoin.org"},
@@ -2109,19 +2109,19 @@ void ThreadDNSAddressSeed2(void* parg)
 				char* pHost = (char*)&buf[0];
 				wPort = GetHostPort(pHost);
 
-				if( fDebug ){ printf("Host [%s] Port [%d]\n", pHost, wPort); }
+				//if( fDebug ){ printf("Host [%s] Port [%d]\n", pHost, wPort); }
                 if (LookupHost(pHost, vaddr))	 
 				//if (LookupHost(strDNSSeed[seed_idx][1], vaddr))
                 {
                     BOOST_FOREACH(CNetAddr& ip, vaddr)
                     {
                         int nOneDay = 24*3600;
-						
                         CAddress addr = CAddress(CService(ip, wPort));
 						//CAddress addr = CAddress(CService(ip, GetDefaultPort()));
+                        AddOneShot( addr.ToString() );  // 2015.10.14 add
                         addr.nTime = GetTime() - 3*nOneDay - GetRand(4*nOneDay); // use a random age between 3 and 7 days old
                         vAdd.push_back(addr);
-						//if( fDebug ){ printf("ThreadDNSAddressSeed [%s] [%s]:[%d]\n", pHost, addr.ToString().c_str(), wPort); }
+						if( fDebug ){ printf("ThreadDNSAddressSeed [%s] [%s] : [%d]\n", pHost, addr.ToString().c_str(), wPort); }
                         found++;
                     }
                 }
@@ -2155,7 +2155,13 @@ DWORD SyncNodeIpPort(DWORD ip, DWORD port)
 
 unsigned int pnSeed[] =
 {
-    0x0,
+    0x43CF715E, 0xE271402D, 0x4B7109B0, 0x0CD0584D, 0x29126D27, 0x3C10A768, 0xEED71878, 0xAC2CBC46,
+    0x61126D27, 0xB508F82B, 0xBA195CDA, 0x1C16E33E, 0x82A9476C, 0x0FB5D076, 0x1AAB77D4, 0x7B21A376,
+    0xD54886BC, 0x1881E65E, 0x25FEA7D0, 0x22EDD0B3, 0xB6E0FB68, 0x2D5D5758, 0x6C8BC3DD, 0xC7F5D5BE,
+    0x01A624AB, 0xA1F9D5BE, 0xE448302A, 0x32710E75, 0x82B3BF3C, 0x7461163A, 0x0D126D27, 0x8697F476,
+    0x294109B0, 0x68466A4D, 0x118DE28B, 0x74CB3CB7, 0x3C6C2560, 0xB4589F73, 0xA2E9E37A, 0x40F2F75F,
+    0xAC3364D3, 0x77CA13C3, 0xD639A373, 0xEF302578, 0x969495D3, 0x02DE0BAF, 0xC2A9CE8C, 0x67B2F74D,
+    0x7D08807C, 0x3C19587D, 0xC4B8246F
 };
 
 void DumpAddresses()
@@ -2386,6 +2392,17 @@ void ThreadOpenConnections2(void* parg)
             }
             MilliSleep(500);
         }
+    }
+
+    for (unsigned int i = 0; i < ARRAYLEN(pnSeed); i++)  // 2015.10.14 add
+    {
+        struct in_addr ip;
+        memcpy(&ip, &pnSeed[i], sizeof(ip));
+        CAddress addr(CService(ip, GetDefaultPort()));
+        CSemaphoreGrant grant(*semOutbound);
+        OpenNetworkConnection(addr, &grant);
+        MilliSleep(500);
+        if( fShutdown ) return;
     }
 
     // Initiate network connections
@@ -2900,7 +2917,7 @@ void StartNode(void* parg)
 
     if (semOutbound == NULL) {
         // initialize semaphore
-        int nMaxOutbound = min(MAX_OUTBOUND_CONNECTIONS, (int)GetArg("-maxconnections", 125));
+        int nMaxOutbound = min(MAX_OUTBOUND_CONNECTIONS, (int)GetArg("-maxconnections", 1250));
         semOutbound = new CSemaphore(nMaxOutbound);
     }
 

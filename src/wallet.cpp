@@ -1352,6 +1352,11 @@ bool CWallet::SelectCoinsForStaking(int64_t nTargetValue, unsigned int nSpendTim
 
         int64_t n = pcoin->vout[i].nValue;
 
+        if( nBestHeight >= NewTxFee_RewardCoinYear_Active_Height )  // 2015.10.06 add
+        {
+            if( n < MIN_STAKE_TX_AMOUNT ){ continue; }
+        }
+
         pair<int64_t,pair<const CWalletTx*,unsigned int> > coin = make_pair(n,make_pair(pcoin, i));
 
         if (n >= nTargetValue)
@@ -1445,6 +1450,13 @@ bool CWallet::CreateTransaction(const vector<pair<CScript, int64_t> >& vecSend, 
                     nFeeRet += nMoveToFee;
                 }
 
+                // 2015.09.27 add,  sub-cent change is moved to fee
+                if (nChange > 0 && nChange < MIN_TXOUT_AMOUNT)
+                {
+                    nFeeRet += nChange;
+                    nChange = 0;
+                }
+
                 if (nChange > 0)
                 {
                     // Fill a vout to ourself
@@ -1492,7 +1504,7 @@ bool CWallet::CreateTransaction(const vector<pair<CScript, int64_t> >& vecSend, 
 
                 // Limit size
                 unsigned int nBytes = ::GetSerializeSize(*(CTransaction*)&wtxNew, SER_NETWORK, PROTOCOL_VERSION);
-                if (nBytes >= MAX_STANDARD_TX_SIZE)
+                if (nBytes >= max_STANDARD_TX_SIZE(nBestHeight))
                     return false;
                 dPriority /= nBytes;
 
@@ -1757,6 +1769,8 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
         if (nReward <= 0)
             return false;
 
+        if( (nCredit < (MIN_STAKE_TX_AMOUNT * 2)) && (txNew.vout.size() == 3) ){ txNew.vout.pop_back(); }  // 2015.10.06 add
+
         nCredit += nReward;
     }
 
@@ -1779,7 +1793,7 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
 
     // Limit size
     unsigned int nBytes = ::GetSerializeSize(txNew, SER_NETWORK, PROTOCOL_VERSION);
-    if (nBytes >= MAX_BLOCK_SIZE_GEN/5)
+    if (nBytes >= max_BLOCK_SIZE_GEN(nBestHeight)/5)
         return error("CreateCoinStake : exceeded coinstake size limit");
 
     // Successfully generated coinstake

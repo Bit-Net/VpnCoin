@@ -31,27 +31,33 @@ class CTxMemPool;
 
 static const int LAST_POW_BLOCK = 5000;
 
-static const unsigned short int MAX_TX_DATA      = 1024;
-static const unsigned short int MAX_TX_DATA_FROM = 128;
-static const unsigned short int MAX_TX_DATA_SUBJ = 128;
-static const unsigned short int MAX_TX_DATA_MSG  = 768;
+static const unsigned int MAX_TX_DATA      = 262144;  // 256KB
+static const unsigned int MAX_TX_DATA_FROM = 128;
+static const unsigned int MAX_TX_DATA_SUBJ = 128;
+static const unsigned int MAX_TX_DATA_MSG  = MAX_TX_DATA - 256;
 
 /** The maximum allowed size for a serialized block, in bytes (network rule) */
-static const unsigned int MAX_BLOCK_SIZE = 1000000;
+static const unsigned int MAX_BLOCK_SIZE = 2048000;  // 2000KB
+static const unsigned int MAX_BLOCK_SIZE_OLD = 1000000;
 /** The maximum size for mined blocks */
 static const unsigned int MAX_BLOCK_SIZE_GEN = MAX_BLOCK_SIZE/2;
+static const unsigned int MAX_BLOCK_SIZE_GEN_OLD = MAX_BLOCK_SIZE_OLD/2;
 /** The maximum size for transactions we're willing to relay/mine **/
 static const unsigned int MAX_STANDARD_TX_SIZE = MAX_BLOCK_SIZE_GEN/5;
+static const unsigned int MAX_STANDARD_TX_SIZE_OLD = MAX_BLOCK_SIZE_GEN_OLD/5;
 /** The maximum allowed number of signature check operations in a block (network rule) */
 static const unsigned int MAX_BLOCK_SIGOPS = MAX_BLOCK_SIZE/50;
+static const unsigned int MAX_BLOCK_SIGOPS_OLD = MAX_BLOCK_SIZE_OLD/50;
 /** The maximum number of orphan transactions kept in memory */
 static const unsigned int MAX_ORPHAN_TRANSACTIONS = MAX_BLOCK_SIZE/100;
+static const unsigned int MAX_ORPHAN_TRANSACTIONS_OLD = MAX_BLOCK_SIZE_OLD/100;
 /** The maximum number of entries in an 'inv' protocol message */
 static const unsigned int MAX_INV_SZ = 50000;
 /** Fees smaller than this (in satoshi) are considered zero fee (for transaction creation) */
-static const int64_t MIN_TX_FEE = 10000;
+static const int64_t MIN_TX_FEE = 10000000;  // 0.1
 /** Fees smaller than this (in satoshi) are considered zero fee (for relaying) */
 static const int64_t MIN_RELAY_TX_FEE = MIN_TX_FEE;
+static const int64_t MIN_TXOUT_AMOUNT = MIN_TX_FEE;
 /** No amount larger than this (in satoshi) is valid */
 static const int64_t MAX_MONEY = 20000000000 * COIN;
 inline bool MoneyRange(int64_t nValue) { return (nValue >= 0 && nValue <= MAX_MONEY); }
@@ -60,12 +66,34 @@ static const unsigned int LOCKTIME_THRESHOLD = 500000000; // Tue Nov  5 00:53:20
 
 static const int64_t COIN_YEAR_REWARD = 1 * CENT; // 1% per year
 
-//static const uint256 hashGenesisBlock("0x000001faef25dec4fbcf906e6242621df2c183bf232f263d0ba5b101911e4563");
+extern const int NewTxFee_RewardCoinYear_Active_Height;  // 2015.09.15 add
+extern const int64_t MIN_STAKE_TX_AMOUNT;  // 2015.10.01 add
+inline unsigned int max_BLOCK_SIZE(int nHeight) { 
+    if( nHeight < NewTxFee_RewardCoinYear_Active_Height ){ return MAX_BLOCK_SIZE_OLD; }
+	else return MAX_BLOCK_SIZE;
+}
+inline unsigned int max_BLOCK_SIZE_GEN(int nHeight) { 
+    if( nHeight < NewTxFee_RewardCoinYear_Active_Height ){ return MAX_BLOCK_SIZE_GEN_OLD; }
+	else return MAX_BLOCK_SIZE_GEN;
+}
+inline unsigned int max_STANDARD_TX_SIZE(int nHeight) { 
+    if( nHeight < NewTxFee_RewardCoinYear_Active_Height ){ return MAX_STANDARD_TX_SIZE_OLD; }
+	else return MAX_STANDARD_TX_SIZE;
+}
+inline unsigned int max_BLOCK_SIGOPS(int nHeight) { 
+    if( nHeight < NewTxFee_RewardCoinYear_Active_Height ){ return MAX_BLOCK_SIGOPS_OLD; }
+	else return MAX_BLOCK_SIGOPS;
+}
+inline unsigned int max_ORPHAN_TRANSACTIONS(int nHeight) { 
+    if( nHeight < NewTxFee_RewardCoinYear_Active_Height ){ return MAX_ORPHAN_TRANSACTIONS_OLD; }
+	else return MAX_ORPHAN_TRANSACTIONS;
+}
+
+
 static const uint256 hashGenesisBlock("0x00000ac7d764e7119da60d3c832b1d4458da9bc9ef9d5dd0d91a15f690a46d99");
 static const uint256 hashGenesisBlockTestNet("0x0000097d092eafac7d6e13e50d511d8e21ffa2f2d382e8449d25521807deec29");
-//static const uint256 hashGenesisBlockTestNet("0x0000724595fb3b9609d441cbfb9577615c292abf07d996d3edabc48de843642d");
 
-inline bool IsProtocolV2(int nHeight) { return nHeight > 1; }	//inline bool IsProtocolV2(int nHeight) { return nHeight > 319000; }
+inline bool IsProtocolV2(int nHeight) { return nHeight > 1; }
 
 inline int64_t PastDrift(int64_t nTime, int nHeight)   { return IsProtocolV2(nHeight) ? nTime      : nTime - 10 * 60; }
 inline int64_t FutureDrift(int64_t nTime, int nHeight) { return IsProtocolV2(nHeight) ? nTime + 15 : nTime + 10 * 60; }

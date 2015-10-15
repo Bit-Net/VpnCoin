@@ -228,7 +228,7 @@ HEADERS += src/qt/bitcoingui.h \
     src/netbase.h \
     src/clientversion.h \
     src/threadsafety.h \
-	src/qt/simplecrypt.h \
+    src/simplecrypt.h \
     src/qt/splashscreen.h
 
 SOURCES += src/qt/bitcoin.cpp src/qt/bitcoingui.cpp \
@@ -309,8 +309,8 @@ SOURCES += src/qt/bitcoin.cpp src/qt/bitcoingui.cpp \
     src/zerocoin/SerialNumberSignatureOfKnowledge.cpp \
     src/zerocoin/SpendMetaData.cpp \
     src/zerocoin/ZeroTest.cpp \
-	src/qt/simplecrypt.cpp \
-	src/qt/splashscreen.cpp
+    src/simplecrypt.cpp \
+    src/qt/splashscreen.cpp
 
 
 RESOURCES += \

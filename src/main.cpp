@@ -75,6 +75,8 @@ const int iBitNetBlockMargin3 = 3;
 const int BitNetBeginAndEndBlockMargin_Mini_30 = 30;
 const int BitNetBeginAndEndBlockMargin_Max_4320 = 4320;
 const int64_t MIN_Lottery_Create_Amount = 100 * COIN;
+const int NewTxFee_RewardCoinYear_Active_Height = 525600;  // 2015.09.15 add
+const int64_t MIN_STAKE_TX_AMOUNT = 1000 * COIN;  // 2015.10.01 add
 
 // Settings
 int64_t nTransactionFee = MIN_TX_FEE;
@@ -308,7 +310,8 @@ bool CTransaction::ReadFromDisk(COutPoint prevout)
     return ReadFromDisk(txdb, prevout, txindex);
 }
 
-extern bool isRejectTransaction(const CTransaction& tx);
+extern bool isRejectTransaction(const CTransaction& tx, unsigned int iTxHei);
+//extern int isValidFreezeTx(const CTransaction& tx, unsigned int iTxHei, int* iRztFreezeTm = NULL, string* sRztPayToAddr = NULL, string* sRztTargetAddr = NULL, int* iFee = 0);
 bool IsStandardTx(const CTransaction& tx)
 {
     if (tx.nVersion > CTransaction::CURRENT_VERSION)
@@ -344,12 +347,17 @@ bool IsStandardTx(const CTransaction& tx)
     // computing signature hashes is O(ninputs*txsize). Limiting transactions
     // to MAX_STANDARD_TX_SIZE mitigates CPU exhaustion attacks.
     unsigned int sz = tx.GetSerializeSize(SER_NETWORK, CTransaction::CURRENT_VERSION);
-    if (sz >= MAX_STANDARD_TX_SIZE)
+    if (sz >= max_STANDARD_TX_SIZE(nBestHeight))
         return false;
 
-	if( isRejectTransaction(tx) )
+    /*if( isValidFreezeTx(tx, 0) == 0 ){  // 2015.09.20 add
+        printf("IsStandardTx: isValidFreezeTx = 0, ban. \n");
+        return false; 
+    }*/
+
+	if( isRejectTransaction(tx, 0) )
 	{ 
-		if( fDebug ){ printf("IsStandardTx: isRejectTransaction = true, ban. \n"); }
+		printf("IsStandardTx: isRejectTransaction = true, ban. \n");
 		return false; 
 	}
 	
@@ -547,7 +555,7 @@ bool CTransaction::CheckTransaction() const
     if (vout.empty())
         return DoS(10, error("CTransaction::CheckTransaction() : vout empty"));
     // Size limits
-    if (::GetSerializeSize(*this, SER_NETWORK, PROTOCOL_VERSION) > MAX_BLOCK_SIZE)
+    if (::GetSerializeSize(*this, SER_NETWORK, PROTOCOL_VERSION) > max_BLOCK_SIZE(nBestHeight))
         return DoS(100, error("CTransaction::CheckTransaction() : size limits failed"));
 
     // Check for negative or overflow output values
@@ -557,6 +565,11 @@ bool CTransaction::CheckTransaction() const
         const CTxOut& txout = vout[i];
         if (txout.IsEmpty() && !IsCoinBase() && !IsCoinStake())
             return DoS(100, error("CTransaction::CheckTransaction() : txout empty for user transaction"));
+        if( nBestHeight >= NewTxFee_RewardCoinYear_Active_Height )
+        {
+            if ((!txout.IsEmpty()) && txout.nValue < MIN_TXOUT_AMOUNT)
+                return DoS(100, error("CTransaction::CheckTransaction() : txout.nValue below minimum"));
+        }
         if (txout.nValue < 0)
             return DoS(100, error("CTransaction::CheckTransaction() : txout.nValue negative"));
         if (txout.nValue > MAX_MONEY)
@@ -594,6 +607,7 @@ int64_t CTransaction::GetMinFee(unsigned int nBlockSize, enum GetMinFee_mode mod
 {
     // Base fee is either MIN_TX_FEE or MIN_RELAY_TX_FEE
     int64_t nBaseFee = (mode == GMF_RELAY) ? MIN_RELAY_TX_FEE : MIN_TX_FEE;
+    if( nBestHeight < NewTxFee_RewardCoinYear_Active_Height ){ nBaseFee = 10000; }  // Old MIN_TX_FEE, 2015.09.15 add
 
     unsigned int nNewBlockSize = nBlockSize + nBytes;
     int64_t nMinFee = (1 + (int64_t)nBytes / 1000) * nBaseFee;
@@ -607,11 +621,12 @@ int64_t CTransaction::GetMinFee(unsigned int nBlockSize, enum GetMinFee_mode mod
     }
 
     // Raise the price as the block approaches full
-    if (nBlockSize != 1 && nNewBlockSize >= MAX_BLOCK_SIZE_GEN/2)
+    unsigned int iMax = max_BLOCK_SIZE_GEN(nBestHeight);
+    if (nBlockSize != 1 && nNewBlockSize >= iMax/2)  //MAX_BLOCK_SIZE_GEN
     {
-        if (nNewBlockSize >= MAX_BLOCK_SIZE_GEN)
+        if (nNewBlockSize >= iMax)  //if (nNewBlockSize >= MAX_BLOCK_SIZE_GEN)
             return MAX_MONEY;
-        nMinFee *= MAX_BLOCK_SIZE_GEN / (MAX_BLOCK_SIZE_GEN - nNewBlockSize);
+        nMinFee *= iMax / (iMax - nNewBlockSize);  //nMinFee *= MAX_BLOCK_SIZE_GEN / (MAX_BLOCK_SIZE_GEN - nNewBlockSize);
     }
 
     if (!MoneyRange(nMinFee))
@@ -1031,7 +1046,12 @@ int64_t GetProofOfStakeReward(int64_t nCoinAge, int64_t nFees)
 {
     //int64_t nSubsidy = nCoinAge * COIN_YEAR_REWARD * 33 / (365 * 33 + 8);
 	
-	int64_t nRewardCoinYear = 0.001 * COIN;	// 0.1%
+    int64_t nRewardCoinYear = 0.001 * COIN;	// 0.1%
+    if( nBestHeight >= NewTxFee_RewardCoinYear_Active_Height )  // 2015.09.07 add
+    {
+        int64_t nSubsidy = 10 * COIN;   //nRewardCoinYear = 0.01314 * COIN;
+        return nSubsidy + nFees;
+    }
 	
 	/* if(nBestHeight < YEARLY_BLOCKCOUNT)
 		nRewardCoinYear = 0.10 * COIN;	// 10%
@@ -1527,6 +1547,7 @@ bool CBlock::DisconnectBlock(CTxDB& txdb, CBlockIndex* pindex)
     return true;
 }
 
+extern bool getTxinAddressAndAmount(const CTxIn& txin, string& sPreTargetAddr, int64_t& iAmnt);
 bool CBlock::ConnectBlock(CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck)
 {
     // Check it again in case a previous version let a bad block in, but skip BlockSig checking
@@ -1572,7 +1593,7 @@ bool CBlock::ConnectBlock(CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck)
         }
 
         nSigOps += tx.GetLegacySigOpCount();
-        if (nSigOps > MAX_BLOCK_SIGOPS)
+        if (nSigOps > max_BLOCK_SIGOPS(nBestHeight))
             return DoS(100, error("ConnectBlock() : too many sigops"));
 
         CDiskTxPos posThisTx(pindex->nFile, pindex->nBlockPos, nTxPos);
@@ -1592,7 +1613,7 @@ bool CBlock::ConnectBlock(CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck)
             // this is to prevent a "rogue miner" from creating
             // an incredibly-expensive-to-validate block.
             nSigOps += tx.GetP2SHSigOpCount(mapInputs);
-            if (nSigOps > MAX_BLOCK_SIGOPS)
+            if (nSigOps > max_BLOCK_SIGOPS(nBestHeight))
                 return DoS(100, error("ConnectBlock() : too many sigops"));
 
             int64_t nTxValueIn = tx.GetValueIn(mapInputs);
@@ -1626,6 +1647,19 @@ bool CBlock::ConnectBlock(CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck)
         uint64_t nCoinAge;
         if (!vtx[1].GetCoinAge(txdb, nCoinAge))
             return error("ConnectBlock() : %s unable to get coin age for coinstake", vtx[1].GetHash().ToString().substr(0,10).c_str());
+
+        const CTxIn& txin = vtx[1].vin[0];
+        std::string sPreTargetAddr = "";
+        int64_t iAmnt = 0;
+        getTxinAddressAndAmount(txin, sPreTargetAddr, iAmnt);
+        double dob = 0;
+        if( iAmnt > 0 ){ dob = (double)iAmnt / (double)COIN; }
+        if( fDebug ){ printf("ConnectBlock:: stake from [%s], amount = [%f] \n", sPreTargetAddr.c_str(), dob); }
+
+        if( (nBestHeight >= NewTxFee_RewardCoinYear_Active_Height) && (iAmnt < MIN_STAKE_TX_AMOUNT) )  // MIN_STAKE_TX_AMOUNT = 1000 * COIN
+        { 
+            return error("ConnectBlock() : stake coin [%f] < MIN_STAKE_TX_AMOUNT", dob);
+        }
 
         int64_t nCalculatedStakeReward = GetProofOfStakeReward(nCoinAge, nFees);
 
@@ -2018,10 +2052,10 @@ bool CBlock::AddToBlockIndex(unsigned int nFile, unsigned int nBlockPos, const u
     pindexNew->SetStakeModifier(nStakeModifier, fGeneratedStakeModifier);
     pindexNew->nStakeModifierChecksum = GetStakeModifierChecksum(pindexNew);
 
-	if( fDebug )
-	{
-		printf("AddToBlockIndex() : stake modifier checkpoint height=%d, modifier=0x%016"PRIx64 " nStakeModifierChecksum=0x%x\n", pindexNew->nHeight, nStakeModifier, pindexNew->nStakeModifierChecksum);
-	}
+    if( fDebug )
+    {
+        printf("AddToBlockIndex() : stake modifier checkpoint height=%d, modifier=0x%016"PRIx64 " nStakeModifierChecksum=0x%x\n", pindexNew->nHeight, nStakeModifier, pindexNew->nStakeModifierChecksum);
+    }
 	
     if (!CheckStakeModifierCheckpoints(pindexNew->nHeight, pindexNew->nStakeModifierChecksum))
         return error("AddToBlockIndex() : Rejected by stake modifier checkpoint height=%d, modifier=0x%016"PRIx64, pindexNew->nHeight, nStakeModifier);
@@ -2068,7 +2102,7 @@ bool CBlock::CheckBlock(bool fCheckPOW, bool fCheckMerkleRoot, bool fCheckSig) c
     // that can be verified before saving an orphan block.
 
     // Size limits
-    if (vtx.empty() || vtx.size() > MAX_BLOCK_SIZE || ::GetSerializeSize(*this, SER_NETWORK, PROTOCOL_VERSION) > MAX_BLOCK_SIZE)
+    if (vtx.empty() || vtx.size() > max_BLOCK_SIZE(nBestHeight) || ::GetSerializeSize(*this, SER_NETWORK, PROTOCOL_VERSION) > max_BLOCK_SIZE(nBestHeight))
         return DoS(100, error("CheckBlock() : size limits failed"));
 
     // Check proof of work matches claimed amount
@@ -2126,7 +2160,7 @@ bool CBlock::CheckBlock(bool fCheckPOW, bool fCheckMerkleRoot, bool fCheckSig) c
     {
         nSigOps += tx.GetLegacySigOpCount();
     }
-    if (nSigOps > MAX_BLOCK_SIGOPS)
+    if (nSigOps > max_BLOCK_SIGOPS(nBestHeight))
         return DoS(100, error("CheckBlock() : out-of-bounds SigOpCount"));
 
     // Check merkle root
@@ -2195,7 +2229,7 @@ bool CBlock::AcceptBlock()
         if (!IsFinalTx(tx, nHeight, GetBlockTime()))
             return DoS(10, error("AcceptBlock() : contains a non-final transaction"));
 			
-        if( isRejectTransaction(tx) ){ return DoS(10, error("AcceptBlock() : block include not under rule's tx, ban.")); }
+        if( isRejectTransaction(tx, nHeight) ){ return DoS(10, error("AcceptBlock() : block include not under rule's tx, ban.")); }
 	}
 
     // Check that the block chain matches the known block chain up to a checkpoint
@@ -2643,11 +2677,11 @@ bool LoadBlockIndex(bool fAllowNew)
         printf("hashGenesisBlock =%s\n", hashGenesisBlock.ToString().c_str());
         printf("block.hashMerkleRoot =%s\n", block.hashMerkleRoot.ToString().c_str());
 		
-		if (fTestNet){
-			assert(block.hashMerkleRoot == uint256("0x23de3a1724ab2c7193f4d0ff6cf1d5b745db9dc0af7fc796db9b3494da42a7c9"));	//uint256("0x12630d16a97f24b287c8c2594dda5fb98c9e6c70fc61d44191931ea2aa08dc90"));
-		}else{
-			assert(block.hashMerkleRoot == uint256("0x698a93a1cacd495a7a4fb3864ad8d06ed4421dedbc57f9aaad733ea53b1b5828"));	//uint256("0x12630d16a97f24b287c8c2594dda5fb98c9e6c70fc61d44191931ea2aa08dc90"));
-		}
+        if (fTestNet){
+            assert(block.hashMerkleRoot == uint256("0x23de3a1724ab2c7193f4d0ff6cf1d5b745db9dc0af7fc796db9b3494da42a7c9"));	//uint256("0x12630d16a97f24b287c8c2594dda5fb98c9e6c70fc61d44191931ea2aa08dc90"));
+        }else{
+            assert(block.hashMerkleRoot == uint256("0x698a93a1cacd495a7a4fb3864ad8d06ed4421dedbc57f9aaad733ea53b1b5828"));	//uint256("0x12630d16a97f24b287c8c2594dda5fb98c9e6c70fc61d44191931ea2aa08dc90"));
+        }
         block.print();
 		
         assert(block.GetHash() == (!fTestNet ? hashGenesisBlock : hashGenesisBlockTestNet));
@@ -2800,7 +2834,7 @@ bool LoadExternalBlockFile(FILE* fileIn)
                 fseek(blkdat, nPos, SEEK_SET);
                 unsigned int nSize;
                 blkdat >> nSize;
-                if (nSize > 0 && nSize <= MAX_BLOCK_SIZE)
+                if (nSize > 0 && nSize <= max_BLOCK_SIZE(nBestHeight))
                 {
                     CBlock block;
                     blkdat >> block;
@@ -2983,7 +3017,10 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 			vRecv >> pfrom->vBitNet.v_Network_id;
 			if (!vRecv.empty()){ vRecv >> pfrom->vBitNet.v_ListenPort; }
 			if (!vRecv.empty()){ vRecv >> pfrom->vBitNet.v_IsGuiNode; }	//-- 2014.12.18 add
+			if (!vRecv.empty()){ vRecv >> pfrom->vBitNet.v_iVpnServiceCtrlPort; }	//-- 2014.12.28 add
+			if (!vRecv.empty()){ vRecv >> pfrom->vBitNet.v_P2P_proxy_port; }	    //-- 2014.12.28 add
 
+			if( pfrom->vBitNet.v_Network_id != BitNet_Network_id ){ pfrom->nStartingHeight = 0; }
 //--2014.11.10 begin			
 /*		if( iVer >= 1121 ) 
         {
@@ -3054,8 +3091,8 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         if (GetBoolArg("-synctime", true))
             AddTimeData(pfrom->addr, nTime);
 
-		// Change version
-		pfrom->PushMessage("verack");	
+        // Change version
+        pfrom->PushMessage("verack");	
 
         pfrom->ssSend.SetVersion(min(pfrom->nVersion, PROTOCOL_VERSION));
 
@@ -3139,7 +3176,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 			pfrom->Misbehaving(1);
 			return false;
 		} */
-		return true;
+        return true;
     }
 
 	else if (strCommand == "GetBitNetInf")	// warring: strCmd max lens = 12, can't be GetBitNetInfo
@@ -3451,13 +3488,13 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 	}
 #endif
 
-	else if( pfrom->vBitNet.v_Network_id != BitNet_Network_id )
-	{ 
-		if( fDebug ){ printf("Node %s Network_id [%d] diff with [%d]\n", pfrom->addr.ToString().c_str(), pfrom->vBitNet.v_Network_id, BitNet_Network_id); }
-		goto FinalCheck;  //return true;  
-	}
+    else if( pfrom->vBitNet.v_Network_id != BitNet_Network_id )
+    { 
+        if( fDebug ){ printf("Node %s Network_id [%d] diff with [%d]\n", pfrom->addr.ToString().c_str(), pfrom->vBitNet.v_Network_id, BitNet_Network_id); }
+        goto FinalCheck;  //return true;
+    }
 	
-	else if (strCommand == "addr")
+    else if (strCommand == "addr")
     {
         vector<CAddress> vAddr;
         vRecv >> vAddr;
@@ -3787,7 +3824,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             AddOrphanTx(tx);
 
             // DoS prevention: do not allow mapOrphanTransactions to grow unbounded
-            unsigned int nEvicted = LimitOrphanTxSize(MAX_ORPHAN_TRANSACTIONS);
+            unsigned int nEvicted = LimitOrphanTxSize(max_ORPHAN_TRANSACTIONS(nBestHeight));
             if (nEvicted > 0)
                 printf("mapOrphan overflow, removed %u tx\n", nEvicted);
         }
@@ -4135,11 +4172,6 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
         if (pto->nVersion == 0)
             return true;
 
-//--2014.11.25 begin
-#ifdef USE_BITNET
-		if( ( (pto->vBitNet.v_iVersion > 1119) && (pto->vBitNet.v_ListenPort) ) && (pto->vBitNet.v_BitNetInfoReceived == 0) ){ pto->PushMessage("GetBitNetInf"); };
-#endif
-//--2014.11.25 end
 
         //
         // Message: ping
@@ -4169,6 +4201,19 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
                 pto->PushMessage("ping");
             }
         }
+
+//--2014.11.25 begin
+#ifdef USE_BITNET
+		if( ( (pto->vBitNet.v_iVersion > 1119) && (pto->vBitNet.v_ListenPort) ) && (pto->vBitNet.v_BitNetInfoReceived == 0) ){ pto->PushMessage("GetBitNetInf"); };
+#endif
+//--2014.11.25 end
+
+        if( (pto->vBitNet.v_Network_id > 0) && (pto->vBitNet.v_Network_id != BitNet_Network_id) )
+        { 
+            if( fDebug ){ printf("SendMessages Network_id %d:%d, [%s]\n", BitNet_Network_id, pto->vBitNet.v_Network_id, pto->addr.ToString().c_str()); }
+                return true; 
+        }	//-- 2015.01.01 add
+
 
         // Resend wallet transactions that haven't gotten in a block yet
         ResendWalletTransactions();

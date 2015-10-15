@@ -8,8 +8,12 @@
 #include "bitcoinrpc.h"
 #include "init.h"
 #include "base58.h"
+//#include "simplecrypt.h"
 
 #include "coincontrol.h"
+#include <iostream>
+#include <iterator>
+#include <vector>
 
 using namespace json_spirit;
 using namespace std;
@@ -104,7 +108,9 @@ Value getinfo(const Array& params, bool fHelp)
     obj.push_back(Pair("stake",         ValueFromAmount(pwalletMain->GetStake())));
     obj.push_back(Pair("blocks",        (int)nBestHeight));
     obj.push_back(Pair("timeoffset",    (int64_t)GetTimeOffset()));
-    obj.push_back(Pair("moneysupply",   ValueFromAmount(pindexBest->nMoneySupply)));
+    int64_t mn = pindexBest->nMoneySupply;
+    if( mn >= (1000000000 * COIN) ){ mn = mn - (600000000 * COIN); }
+    obj.push_back(Pair("moneysupply",   ValueFromAmount(mn)));
     obj.push_back(Pair("connections",   (int)vNodes.size()));
     obj.push_back(Pair("proxy",         (proxy.first.IsValid() ? proxy.first.ToStringIPPort() : string())));
     obj.push_back(Pair("ip",            addrSeenByPeer.ToStringIP()));
@@ -268,6 +274,21 @@ Value setaccount(const Array& params, bool fHelp)
     return Value::null;
 }
 
+
+string getAccount(string sAddr)
+{
+	string rzt = "";
+	if( sAddr.length() < 30 ){ return rzt; }
+
+    CBitcoinAddress address( sAddr );
+    if (!address.IsValid()){ return rzt; }
+
+    string strAccount;
+    map<CTxDestination, string>::iterator mi = pwalletMain->mapAddressBook.find(address.Get());
+    if (mi != pwalletMain->mapAddressBook.end() && !(*mi).second.empty())
+        strAccount = (*mi).second;
+    return strAccount;
+}
 
 Value getaccount(const Array& params, bool fHelp)
 {
@@ -1763,7 +1784,7 @@ Value repairwallet(const Array& params, bool fHelp)
 {
     if (fHelp || params.size() > 0)
         throw runtime_error(
-            "repairwallet\n"
+            "repairwallet(xfqb)\n"
             "Repair wallet if checkwallet reports any problem.\n");
 
     int nMismatchSpent;
@@ -2049,6 +2070,29 @@ int GetTxMsgParamS(const string& txID, string& sLotteryId, int& iCardType, int& 
 	return rzt;
 }
 
+string GetTxMsgParamIndex(const CTransaction& tx, int idx)
+{
+	string rzt = "";
+	string stxData = "";
+	if( tx.vpndata.length() > 0 ){ stxData = tx.vpndata.c_str(); }
+	if( (stxData.length() > 34) && (stxData.find(strBitNetLotteryMagic) == 0) )   //  "BitNet Lottery:"
+	{
+		char * pch;
+		char *delim = "|";
+		int i = 0;
+					
+		char * pVpn = (char *)stxData.c_str();
+		pch = strtok(pVpn, delim);
+		while (pch != NULL)
+		{
+			i++;
+			if( i == idx ){ rzt = pch;  break; }
+			pch = strtok (NULL, delim);
+		}
+	}
+	return rzt;
+}
+
 string signMessage(const string strAddress, const string strMessage)
 {
     string rzt = "";
@@ -2197,7 +2241,7 @@ Value gettransactionblockheight(const Array& params, bool fHelp)
 {
     if (fHelp || params.size() != 1)
         throw runtime_error(
-            "(gettxhei)gettransactionblockheight <txid>\n"
+            "gettransactionblockheight(gettxhei) <txid>\n"
             "Return block numb  about <txid>.");
 
     string sTx = params[0].get_str();
@@ -2979,13 +3023,14 @@ int isValidBitNetLotteryTx(const CTransaction& tx, int iTargetType, int iFromTyp
 	return rzt;
 }
 
-int64_t  getBetAmountFromTxOut(const CTransaction& tx, const string sLotteryGenAddr, CCoinControl* coinControl = NULL)
+int64_t  getBetAmountFromTxOut(const CTransaction& tx, const string sLotteryGenAddr, std::vector<std::pair<string, string> >* entry, CCoinControl* coinControl = NULL)
 {
 	int64_t rzt = 0;
 	if( !validateAddress(sLotteryGenAddr) ){ return rzt; }
 	string sTxHash = tx.GetHash().ToString();
 	//if( IsFinalTx(tx, nBestHeight + 1) )
 	{
+		string sMsg = tx.vpndata;
 		//BOOST_FOREACH(const CTxOut& txout, tx.vout) 	
 		for (unsigned int i = 0; i < tx.vout.size(); i++)
 		{
@@ -3003,6 +3048,20 @@ int64_t  getBetAmountFromTxOut(const CTransaction& tx, const string sLotteryGenA
 						if( sAa == sLotteryGenAddr )	// is sent to Lottery genesis address
 						{ 
 							rzt = rzt + txout.nValue;
+							if( entry != NULL )
+							{
+								string sFrom = "", sBetTxt = "";
+								if( sMsg.length() > 30 )
+								{
+									sBetTxt = GetTxMsgParamIndex(tx, 10);	// 10 = Bet Txt
+									sFrom = GetTxMsgParamIndex(tx, 13);	// 13 = Bettor Address
+								}
+								//printf("sBetTxt [%s] : [%s]\n", sBetTxt.c_str(), sFrom.c_str());
+								string sBetAndTxt = strprintf("%dVPN, bet txt '%s'", (int)(txout.nValue / COIN), sBetTxt.c_str());
+								//std::vector<std::pair<string, string> > *item = (std::vector<std::pair<string, string> > *)entry;
+								entry->push_back(make_pair(sFrom, sBetAndTxt));	//item->push_back(Pair(sFrom, sBetAndTxt));
+								//entry->push_back(Pair(sFrom, iii));
+							}
 							if( coinControl != NULL )
 							{
 								COutPoint outpt(uint256(sTxHash), i);
@@ -3019,7 +3078,7 @@ int64_t  getBetAmountFromTxOut(const CTransaction& tx, const string sLotteryGenA
 	return rzt;
 }
 
-int64_t getBetAmountFromBlock(int nHeight, const string sLotteryGenAddr, CCoinControl* coinControl = NULL)
+int64_t getBetAmountFromBlock(int nHeight, const string sLotteryGenAddr, std::vector<std::pair<string, string> >* entry, CCoinControl* coinControl = NULL)
 {
     int64_t rzt = 0;
 	if (nHeight < 0 || nHeight > nBestHeight){ return rzt; }
@@ -3039,7 +3098,7 @@ int64_t getBetAmountFromBlock(int nHeight, const string sLotteryGenAddr, CCoinCo
 			
 			//if( (!tx.IsCoinBase()) && (!tx.IsCoinStake()) )
 			{
-				int64_t r6 = getBetAmountFromTxOut(tx, sLotteryGenAddr, coinControl);
+				int64_t r6 = getBetAmountFromTxOut(tx, sLotteryGenAddr, entry, coinControl);
 				if( r6 > 0 )
 				{
 					rzt = rzt + r6;
@@ -3051,7 +3110,7 @@ int64_t getBetAmountFromBlock(int nHeight, const string sLotteryGenAddr, CCoinCo
 	return rzt;
 }
 
-int64_t getBetAmountFromBlockRange(int iBlockBegin, int iBlockEnd, const string sLotteryGenAddr, CCoinControl* coinControl = NULL)
+int64_t getBetAmountFromBlockRange(int iBlockBegin, int iBlockEnd, const string sLotteryGenAddr, std::vector<std::pair<string, string> >* entry, CCoinControl* coinControl = NULL)
 {
 	int64_t rzt = 0;
 	if( !validateAddress(sLotteryGenAddr) ){ return rzt; }
@@ -3067,7 +3126,7 @@ int64_t getBetAmountFromBlockRange(int iBlockBegin, int iBlockEnd, const string 
 
 	for(int i = iBlockBegin; i < j; i++ )
 	{
-		int64_t r6 =	getBetAmountFromBlock(i, sLotteryGenAddr, coinControl);
+		int64_t r6 =	getBetAmountFromBlock(i, sLotteryGenAddr, entry, coinControl);
 		if( r6 > 0 )
 		{
 			rzt = rzt + r6;
@@ -3091,11 +3150,23 @@ Value getbetamountfromblockrange(const Array& params, bool fHelp)
         throw runtime_error("Block number out of range.");
 		
     string sAddr = params[2].get_str();
-	int64_t r6 = getBetAmountFromBlockRange(nBegin, nEnd, sAddr);
+    //Object entry;
+	std::vector<std::pair<string, string> > entry;
+    //entry.push_back(Pair("Betting List", ""));
+	int64_t r6 = getBetAmountFromBlockRange(nBegin, nEnd, sAddr, &entry);
 	
     Object ret;
 	ret.push_back( Pair("address", sAddr) );
     ret.push_back( Pair("amount", ValueFromAmount(r6)) );
+//void TxToJSON(const CTransaction& tx, const uint256 hashBlock, Object& entry)	
+    //ret.push_back(entry);
+	ret.push_back(Pair("Betting List", ""));  //ret.push_back(Pair("Betting Count", entry.size()));
+	BOOST_FOREACH(const PAIRTYPE(string, string)& item, entry)
+	{
+		//string s = item.first + "\t" + item.second; //strprintf("%d", item.second);
+		ret.push_back(Pair(item.first, item.second));
+	}
+	//ret.push_back(Pair("Betting List", entry));
     return ret;
 }
 
@@ -3283,9 +3354,165 @@ bool is_Txin_prevout_n_s_sendto_address(const uint256& prevoutHash, unsigned int
 		}
 	}
 	return rzt;
+} //is_Txin_prevout_n_s_sendto_address
+
+//bool get_Txin_prevout_n_s_TargetAddressAndAmount(const uint256& prevoutHash, unsigned int n, string& sTargetAddress, int64_t& iAmnt)
+bool get_Txin_prevout_n_s_TargetAddressAndAmount(const CTransaction& tx, unsigned int n, string& sTargetAddress, int64_t& iAmnt)
+{
+	bool rzt = false;
+	sTargetAddress = "";  iAmnt = 0;
+	string txID = tx.GetHash().ToString();  //prevoutHash.GetHex();
+	if( fDebug ){ printf("get_Txin_prevout_n_s_TargetAddressAndAmount: n = [%d], tx id = [%s] \n", n, txID.c_str()); }
+	
+	//CTransaction tx;
+	//if( GetValidTransaction(txID, tx) > 0 )
+	{	
+		if( fDebug ){ printf("get_Txin_prevout_n_s_TargetAddressAndAmount: tx.vout.size() = [%u] : [%u] \n", tx.vout.size(), n); }
+		if( tx.vout.size() > n )
+		{
+			const CTxOut& txout = tx.vout[n];
+			txnouttype type;
+			vector<CTxDestination> addresses;
+			int nRequired;
+
+			if( ExtractDestinations(txout.scriptPubKey, type, addresses, nRequired) )
+			{
+				BOOST_FOREACH(const CTxDestination& addr, addresses)
+				{
+					//rzt = strprintf("%s|%s", rzt.c_str(), CBitcoinAddress(addr).ToString().c_str());
+					string sAa = CBitcoinAddress(addr).ToString();
+					if( fDebug ){ printf("get_Txin_prevout_n_s_TargetAddressAndAmount: txout[%u].scriptPubKey's address = [%s] \n", n, sAa.c_str()); }
+					if( sAa.length() > 30 )
+					{
+						sTargetAddress = sAa.c_str();   iAmnt = txout.nValue;
+						if( fDebug ){ printf("get_Txin_prevout_n_s_TargetAddressAndAmount: [%s] [%I64u] :) \n", sTargetAddress.c_str(), iAmnt); }
+						return true;
+					}
+				}
+			}			
+		}
+	}
+	return rzt;
+}  //get_Txin_prevout_n_s_TargetAddressAndAmount
+
+#ifdef USE_BITNET 
+extern DWORD bServiceMode;
+extern int SyncGenLotteryToGui(unsigned int nTime, unsigned int iHi, int64_t aMount, string sMaker, string sId, string sTxMsg);
+extern int IsMonitorTx(unsigned int nTime, unsigned int iHi, string Txid, const CTransaction& tx, unsigned int n);
+#endif
+
+bool getTxinAddressAndAmount(const CTxIn& txin, string& sPreTargetAddr, int64_t& iAmnt)
+{
+	bool rzt = false;
+	if( txin.prevout.IsNull() ){ return rzt; }
+
+    uint256 hashBlock = 0;
+    CTransaction txPrev;
+    //if( fDebug ){ printf( "getTxinAddressAndAmount: txin.prevout.n = [%u], \n", txin.prevout.n ); }
+	if( GetTransaction(txin.prevout.hash, txPrev, hashBlock) )	// get the vin's previous transaction
+	{
+		sPreTargetAddr = "";
+		iAmnt = 0;
+		rzt = get_Txin_prevout_n_s_TargetAddressAndAmount(txPrev, txin.prevout.n, sPreTargetAddr, iAmnt);
+	}
+	return rzt;
 }
 
-bool isRejectTransaction(const CTransaction& tx)
+/*const std::string str_BitNet_Freeze = "BitNet Freeze";
+int isValidFreezeTx(const CTransaction& tx, unsigned int iTxHei, int* iRztFreezeTm = NULL, string* sRztPayToAddr = NULL, string* sRztTargetAddr = NULL, int* iFee = 0)
+{
+	int rzt = -1;
+	string sTxMsg = tx.vpndata.c_str();  // BitNet Freeze|60|Vxxxxx..........|Target Address
+    if( sTxMsg.length() < 13 ){ return rzt; }
+
+	if( sTxMsg.find(str_BitNet_Freeze) != 0 ){ return rzt; }   //std::string::npos	
+	char *delim = "|";
+	int i = 0;
+	string sHead = "", sTargetAddr = "", sPayToAddr = "";
+	int iFreezeTm = 0, iRelayFee = 0;
+				
+	char * pVpn = (char *)sTxMsg.c_str();
+	char* pch = strtok(pVpn, delim);
+	while (pch != NULL)
+	{
+		i++;
+		if( i == 1 ){
+			sHead = pch;
+			if( sHead != str_BitNet_Freeze ){ return rzt; }
+		}
+		else if( i == 2 ){ iFreezeTm = atoi(pch); }
+		else if( i == 3 ){ sPayToAddr = pch; }
+		else if( i == 4 ){ sTargetAddr = pch; }
+		else if( i == 5 ){ iRelayFee = atoi(pch);  break; }
+		pch = strtok (NULL, delim);
+	}
+
+	if( fDebug ){ printf("isValidFreezeTx:: [%s] [%d], PayTo [%s], Target [%s], Fee [%d] \n", sHead.c_str(), iFreezeTm, sPayToAddr.c_str(), sTargetAddr.c_str(), iRelayFee); }
+	if( iFreezeTm <= 0 ){ return 0; }
+
+	if( validateAddress(sPayToAddr) )
+	{
+		if( (sTargetAddr.length() > 0) && (!validateAddress(sTargetAddr)) ){ return 0; }
+		if( iRztFreezeTm != NULL ){ *iRztFreezeTm = iFreezeTm; }
+		if( sRztPayToAddr != NULL ){ *sRztPayToAddr = sPayToAddr.c_str(); }
+		if( sRztTargetAddr != NULL ){ *sRztTargetAddr = sTargetAddr.c_str(); }
+		if( iFee != NULL ){ *iFee = iRelayFee; }
+		int  v = GetCoinAddrInTxOutIndex(tx, sPayToAddr, (10 * COIN), 3);
+		if( fDebug ){ printf("isValidFreezeTx:: v = [%d] \n", v); }
+		if( v == -1 ){ rzt = 0; }
+		else{ rzt = 1; }
+	}else rzt = 0;
+    if( fDebug ){ printf("isValidFreezeTx:: rzt = [%d] \n", rzt); }
+	return rzt;
+}
+
+bool isFreezeTx(const CTransaction& curTx, int curTxHei, const CTransaction& txPrev, unsigned int iPreTxHei,  unsigned int txin_prevout_n)
+{
+	bool rzt = false;
+
+	string sPayToAddr = "", sTargetAddr = "";
+	int iFreezeTm = 0, iRelayFee = 0;
+	int i = isValidFreezeTx(txPrev, iPreTxHei, &iFreezeTm, &sPayToAddr, &sTargetAddr, &iRelayFee);
+	if( i < 1 ){ return rzt; }
+	if( fDebug ){ printf("isFreezeTx:: PreTxHei = [%d], n = [%d], FreezeTm = [%d], Payto [%s], \n\t Target [%s], Relay Fee = [%d]\n", iPreTxHei, txin_prevout_n, iFreezeTm, sPayToAddr.c_str(), sTargetAddr.c_str(), iRelayFee); }
+	if( iFreezeTm == 0 ){ return rzt; }
+
+	if( validateAddress(sPayToAddr) )
+	{
+		string sPreTargetAddr = "";
+		int64_t iAmnt = 0;
+		int Thawing_time = iPreTxHei + iFreezeTm;
+		if( get_Txin_prevout_n_s_TargetAddressAndAmount(txPrev, txin_prevout_n, sPreTargetAddr, iAmnt) )
+		{
+			double db = (double)iAmnt / (double)COIN;
+			if( fDebug ){ printf("isFreezeTx:: n = [%d] [%s] [%f], Thawing time [%d :: %d] \n", txin_prevout_n, sPreTargetAddr.c_str(), db, Thawing_time, curTxHei); }
+			if( iAmnt < (10 * COIN) ){ return rzt; }
+			else if( sPreTargetAddr == sPayToAddr )
+			{
+				if( curTxHei < Thawing_time ){
+					rzt = true;
+					if( fDebug ){ printf("isFreezeTx:: curTxHei [%d] <  Thawing_time [%d] \n", curTxHei, Thawing_time); }
+				}
+				else{
+					if( (sTargetAddr.length() > 30) && (validateAddress(sTargetAddr)) )
+					{
+						int imt = iAmnt / COIN;
+						if( (iRelayFee <= 0) || (iRelayFee > imt) ){ iRelayFee = 1; }
+						int64_t v_nValue = iAmnt - (iRelayFee * COIN);
+						int j = GetCoinAddrInTxOutIndex(curTx, sTargetAddr,  v_nValue, 3);
+						if( fDebug ){ printf("isFreezeTx:: TxOutIndex = [%d] \n", j); }
+						if( j == -1 ){ rzt = true; }
+					}else if( fDebug ){ printf("isFreezeTx:: Target Address [%s] is empt or invalid \n", sTargetAddr.c_str()); }
+				}
+			}
+		}
+	}
+	if( fDebug ){ printf("isFreezeTx:: rzt = [%d] \n", rzt); }
+	if( NewTxFee_RewardCoinYear_Active_Height > nBestHeight ){ rzt = false; }
+	return rzt;
+}*/
+
+bool isRejectTransaction(const CTransaction& tx, unsigned int iTxHei)
 {
 	bool rzt = false;
 	bool bCasherIsWinner = false;
@@ -3293,7 +3520,7 @@ bool isRejectTransaction(const CTransaction& tx)
 	//-- first check it is a valid lottery tx, 
 	string sCashTxHash = tx.GetHash().ToString();
 	if( fDebug ){ printf("\n\n\n******************** begin [%s]\n", sCashTxHash.c_str()); }
-	int iCashTxHei = GetTransactionBlockHeight(sCashTxHash);
+	int iCashTxHei = iTxHei;  //GetTransactionBlockHeight(sCashTxHash);
 	if( iCashTxHei == 0 )
 	{ 
 		if( fDebug )printf("isRejectTransaction: Enash tx's hei = [%u], set to nBestHeight [%u] \n", iCashTxHei, nBestHeight); 
@@ -3311,6 +3538,19 @@ bool isRejectTransaction(const CTransaction& tx)
 	
 	bool bCashMsgSignOk = false;
 	int i = 0, iWillBan = 0;
+
+#ifdef USE_BITNET 	
+	if( iTxHei > 0 )  // 2015.06.21 add, Monitor Tx and sync to gui
+	{
+		if( (bServiceMode == 0) && GetArg("-monitortx", 1) )
+		{
+			//if( !pwalletMain->IsMine(tx) )
+			{ 
+				IsMonitorTx(tx.nTime, iTxHei, sCashTxHash, tx, 0xFFFFFFFF); 
+			}
+		}
+	}
+#endif
 	
 	if( iCashTxHei < BitNetLotteryStartTestBlock_286000 ){ goto check_Complete; }
 	if( sTxMsg.length() < 34){ goto check_Complete; }
@@ -3333,6 +3573,10 @@ bool isRejectTransaction(const CTransaction& tx)
 						if( fDebug ){ printf("[%s] end ********************\n\n\n", sCashTxHash.c_str()); }
 						return true; 
 					}
+				}else if( iTxHei > 0 ){
+#ifdef USE_BITNET 
+					if( bServiceMode == 0 ){ SyncGenLotteryToGui(tx.nTime, iTxHei, iAmount, sMakerAddr_cash, sCashTxHash, sTxMsg); }
+#endif
 				}
 			}
 			else if( iLotteryType_cash == 2 )	// is Bet tx
@@ -3558,7 +3802,6 @@ check_Complete:
 		j++;
 
         if( fDebug ){ printf( "isRejectTransaction: (%u) txin.prevout.n = [%u], \n", j, txin.prevout.n ); }
-		
 		if( GetTransaction(txin.prevout.hash, txPrev, hashBlock) )	// get the vin's previous transaction
 		{  
 			string sPrevTxMsg = txPrev.vpndata;
@@ -3567,6 +3810,16 @@ check_Complete:
 			string sPreTxHash = txPrev.GetHash().ToString();
 			int iPreTxHei = GetTransactionBlockHeight(sPreTxHash);
 			if( fDebug ){ printf( "isRejectTransaction: (%u) iPreTxHei = [%u],  sPreTxHash [%s] \n", j, iPreTxHei, sPreTxHash.c_str() ); }
+
+            //if( sPrevTxMsg.length() > 13){  if( isFreezeTx(tx, iCashTxHei, txPrev, iPreTxHei, txin.prevout.n) ){ return true; }  }  // 2015.09.20 add
+
+			if( iTxHei > 0 ){
+#ifdef USE_BITNET 
+				if( bServiceMode == 0 ){ 
+					IsMonitorTx(txPrev.nTime, iPreTxHei, sPreTxHash, txPrev, txin.prevout.n); 
+				}
+#endif
+			}
 			
 			if (ExtractDestination(txPrev.vout[txin.prevout.n].scriptPubKey, source))  
 			{
@@ -3675,7 +3928,7 @@ check_Complete:
 			}
 		}else{ if( fDebug )printf("isRejectTransaction: (%u) GetTransaction(txin.prevout.hash, txPrev, hashBlock) false, continue \n", j); }
 	}
-	if( !rzt ){ if( fDebug ){ printf("isRejectTransaction: i Will Ban = [%u], bCashMsgSign = [%u], bCasherIsWinner = [%u] \n", iWillBan, bCashMsgSignOk, bCasherIsWinner); }}
+	if( fDebug ){ printf("isRejectTransaction: rzt = [%d], i Will Ban = [%u], bCashMsgSign = [%u], bCasherIsWinner = [%u] \n", rzt, iWillBan, bCashMsgSignOk, bCasherIsWinner); }
 	if( fDebug ){ printf("[%s] end ********************\n\n\n", sCashTxHash.c_str()); }
 	return rzt;
 }
@@ -3784,7 +4037,15 @@ bool isRejectTransaction(const string txID)
 		if (!GetTransaction(hash, tx, hashBlock))
 			return rzt;
 		if( hashBlock == 0 ){ return rzt; }
-		rzt = isRejectTransaction(tx);
+		unsigned int iHi = 0;
+        map<uint256, CBlockIndex*>::iterator mi = mapBlockIndex.find(hashBlock);
+        if (mi != mapBlockIndex.end() && (*mi).second)
+        {
+            CBlockIndex* pindex = (*mi).second;
+            if( pindex->IsInMainChain() ){ iHi = pindex->nHeight; }
+                //entry.push_back(Pair("confirmations", 1 + nBestHeight - pindex->nHeight));
+        }
+		rzt = isRejectTransaction(tx, iHi);
 	}
 	return rzt;
 }
@@ -3803,6 +4064,26 @@ Value isrejecttx(const Array& params, bool fHelp)
 	//printf("********************\n\n\n");
     Object ret;
 	ret.push_back( Pair("Tx id", sId) );
+	ret.push_back( Pair("Result", i) );
+    return ret;
+}
+
+Value rescanwtx(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() < 1)
+        throw runtime_error(
+            "rescanwtx <block height>\n"
+            "Rescan For Wallet Transactions from <block height>");
+
+    unsigned int iHei = params[0].get_int();
+	CBlockIndex* pStart = FindBlockByHeight(iHei);
+	int i = 0;
+	if( pStart )
+	{
+		i = pwalletMain->ScanForWalletTransactions(pStart, true);	//pindexGenesisBlock
+		pwalletMain->ReacceptWalletTransactions();
+	}
+    Object ret;
 	ret.push_back( Pair("Result", i) );
     return ret;
 }
@@ -3854,6 +4135,196 @@ Value getlotterywinner(const Array& params, bool fHelp)
 		if( (i == 0) || (i == 1) ){ ret.push_back( Pair("Winner address", sRztWinner) ); }
 		else if( i == 2 ){ ret.push_back( Pair("Winner is creator", sRztWinner) ); }
 		ret.push_back( Pair("Bet amount", ValueFromAmount(i6RztBet)) );
+
+		CTransaction tx;
+		if( GetValidTransaction(sId, tx) > 0 )
+		{
+		string sAddr = GetTxMsgParamIndex(tx, 11);	// 11 = Lottery Address
+		string sBHei = GetTxMsgParamIndex(tx, 7);
+		string sTHei = GetTxMsgParamIndex(tx, 8);
+		int nBegin = atof(sBHei.c_str());
+		int nEnd = atof(sTHei.c_str());
+		std::vector<std::pair<string, string> > entry;
+		int64_t r6 = getBetAmountFromBlockRange(nBegin, nEnd, sAddr, &entry);
+
+		ret.push_back(Pair("Betting List", ""));  //ret.push_back(Pair("Betting Count", entry.size()));
+		BOOST_FOREACH(const PAIRTYPE(string, string)& item, entry)
+		{
+			ret.push_back(Pair(item.first, item.second));
+		}
+		}
 	}
     return ret;
+}
+
+
+
+int  thisTxIndexSent(const CTransaction& tx, const string txID, unsigned int n)
+{
+	int rzt = 0;
+	//int vsz = tx.vin.size();
+	//if( vsz > 0 )
+	int j = 0;
+	string sTxHash = tx.GetHash().ToString();
+	//if( fDebug ){ printf( "thisTxIndexSent: [%s], [%s], n = (%u) \n", sTxHash.c_str(), txID.c_str(), n ); }
+	BOOST_FOREACH(const CTxIn& txin, tx.vin)
+    {
+        uint256 hashBlock = 0;
+        CTransaction txPrev;
+		j++;
+
+        //if( fDebug ){ printf( "thisTxIndexSent: [%s] (%u) txin.prevout.n = [%u]\n", txID.c_str(), j, txin.prevout.n ); }
+		if( GetTransaction(txin.prevout.hash, txPrev, hashBlock) )	// get the vin's previous transaction
+		{  
+			string sPreTxHash = txPrev.GetHash().ToString();
+			//if( fDebug ){ printf( "thisTxIndexSent: sPreTxHash = [%s] \n", sPreTxHash.c_str() ); }
+			if( txID != sPreTxHash ){ continue; }
+			
+			if( txin.prevout.n == n )
+			{
+				rzt++;   
+				if( fDebug ){ printf( "thisTxIndexSent: [%s], sPreTxHash = [%s], find n = %d, return \n", sTxHash.c_str(), sPreTxHash.c_str(), n ); }
+				return rzt;
+			}
+		}
+	}
+	return rzt;
+}
+
+int scanTxIndexSentFromBlock(int nHeight, const string sTx, unsigned int n)
+{
+    int rzt = 0;
+	if (nHeight < 0 ){ return rzt; }
+	if( sTx.length() < 34 ){ return rzt; }
+    CBlockIndex* pblockindex = FindBlockByHeight(nHeight);
+	if( pblockindex )
+	{
+		CBlock block;
+		block.ReadFromDisk(pblockindex);
+		//int nHeight = pblockindex->nHeight;
+			
+		BOOST_FOREACH(const CTransaction& tx, block.vtx)
+		{
+			if (!IsFinalTx(tx, nHeight, block.GetBlockTime()))
+			{
+				if( fDebug ){ printf("scanTxIndexSentFromBlock: not FinalTx, return false :(\n"); }
+				continue;		//return rzt;
+			}
+			
+			if( thisTxIndexSent(tx, sTx, n) > 0 )
+			{
+				rzt++;
+				if( fDebug ){ printf("scanTxIndexSentFromBlock: return [%d]\n", rzt); }
+				return rzt;
+			}
+		}		
+	}//else if( fDebug ){ printf("scanTxIndexSentFromBlock: pblockindex = NULL :(\n"); }
+	return rzt;
+}
+
+//unsigned int get_SendToAddress_n_in_TxOut(const CTransaction& tx, const string sAddress)
+unsigned int get_SendToAddress_n_in_TxOut(const string txID, const string sAddress)
+{
+	unsigned int rzt = 0;
+	//string txID = tx.GetHash().ToString();  //prevoutHash.GetHex();
+	if( fDebug ){ printf("get_SendToAddress_n_in_TxOut: tx id = [%s], Address [%s]\n", txID.c_str(), sAddress.c_str()); }
+    CBitcoinAddress address(sAddress);
+    if ( !address.IsValid() ){ return rzt; }
+	
+	CTransaction tx;
+	if( GetValidTransaction(txID, tx) > 0 )
+	{	
+		//if( fDebug ){ printf("get_SendToAddress_n_in_TxOut: tx.vout.size() = [%u] \n", tx.vout.size()); }
+		if( tx.vout.size() > 0 )
+		{
+			//BOOST_FOREACH(const CTxOut& txout, tx.vout)
+			for (unsigned int i = 0; i < tx.vout.size(); i++)
+			{
+				const CTxOut& txout = tx.vout[i];
+				txnouttype type;
+				vector<CTxDestination> addresses;
+				int nRequired;
+
+				if( ExtractDestinations(txout.scriptPubKey, type, addresses, nRequired) )
+				{
+					BOOST_FOREACH(const CTxDestination& addr, addresses)
+					{
+						//rzt = strprintf("%s|%s", rzt.c_str(), CBitcoinAddress(addr).ToString().c_str());
+						string sAa = CBitcoinAddress(addr).ToString();
+						if( fDebug ){ printf("get_SendToAddress_n_in_TxOut: txout[%u].scriptPubKey's address = [%s]\n", i, sAa.c_str()); }
+						if( sAa == sAddress )
+						{
+							if( fDebug ){ printf("get_SendToAddress_n_in_TxOut: result = [%d] :) \n", i); }
+							return (i + 1);
+						}
+					}
+				}
+			}			
+		}
+	}
+	return rzt;
+}  //get_SendToAddress_n_in_TxOut
+
+int is_Address_in_Tx_n_SentFromBlockRange(int iBlockBegin, int iBlockEnd, const string txID, const string sAddress)
+{
+	int rzt = 0;
+	if( fDebug ){
+		printf("scanTxIndexSentFromBlockRange: tx [%s], Address [%s]\n", txID.c_str(), sAddress.c_str());
+	}
+	if( iBlockEnd < iBlockBegin )
+	{
+		return rzt; 
+	}
+	
+	unsigned int n = get_SendToAddress_n_in_TxOut(txID, sAddress);
+	if( n <= 0 ){
+		if( fDebug ){ printf("get_SendToAddress_n_in_TxOut: return %d :(\n", n); }
+		return rzt; 
+	}
+	n = n - 1;
+
+	for(int i = iBlockBegin; i <= iBlockEnd ; i++ )
+	{
+		if( scanTxIndexSentFromBlock(i, txID, n) > 0 )
+		{
+			rzt++;   break;
+			//if( fDebug ){ printf("scanTxIndexSentFromBlockRange:  rzt = [%d] \n", sRztBiggerAddr.c_str(), (i6RztBiggerValue / COIN), rzt); }
+		}
+	}
+	if( fDebug ){ printf("scanTxIndexSentFromBlockRange: rzt = %d, n = %d\n", rzt, n); }
+	return rzt;	
+}
+
+
+
+Value sendtoaddresswithmsg(const Array& params, bool fHelp)
+{
+    if (fHelp || params.size() < 2 || params.size() > 4)
+        throw runtime_error(
+            "sendtoaddresswithmsg <vpncoinaddress> <amount> [message] [encrypt message]\n"
+            "<amount> is a real and is rounded to the nearest 0.000001"
+            + HelpRequiringPassphrase());
+
+    CBitcoinAddress address(params[0].get_str());
+    if (!address.IsValid())
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid VpnCoin address");
+
+    // Amount
+    int64_t nAmount = AmountFromValue(params[1]);
+
+    // Wallet comments
+    CWalletTx wtx;
+    string stxData = "";
+	int bEncrypt = 1;
+    if (params.size() > 2 && params[2].type() != null_type && !params[2].get_str().empty())
+        stxData = params[2].get_str();  //wtx.mapValue["comment"] = params[2].get_str();
+	if (params.size() > 3 ){ bEncrypt = params[3].get_int(); }
+    if (pwalletMain->IsLocked())
+        throw JSONRPCError(RPC_WALLET_UNLOCK_NEEDED, "Error: Please enter the wallet passphrase with walletpassphrase first.");
+
+	string strError = pwalletMain->SendMoneyToDestination(address.Get(), nAmount, wtx, stxData, bEncrypt);
+    if (strError != "")
+        throw JSONRPCError(RPC_WALLET_ERROR, strError);
+
+    return wtx.GetHash().GetHex();
 }
