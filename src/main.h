@@ -31,7 +31,7 @@ class CTxMemPool;
 
 static const int LAST_POW_BLOCK = 5000;
 
-static const unsigned int MAX_TX_DATA      = 262144;  // 256KB
+static const unsigned int MAX_TX_DATA      = 65536;  // 64KB
 static const unsigned int MAX_TX_DATA_FROM = 128;
 static const unsigned int MAX_TX_DATA_SUBJ = 128;
 static const unsigned int MAX_TX_DATA_MSG  = MAX_TX_DATA - 256;
