@@ -547,7 +547,7 @@ int CMerkleTx::SetMerkleBranch(const CBlock* pblock)
 
 
 
-bool CTransaction::CheckTransaction() const
+bool CTransaction::CheckTransaction(bool bChkMiniValue) const
 {
     // Basic checks that don't depend on any context
     if (vin.empty())
@@ -565,7 +565,7 @@ bool CTransaction::CheckTransaction() const
         const CTxOut& txout = vout[i];
         if (txout.IsEmpty() && !IsCoinBase() && !IsCoinStake())
             return DoS(100, error("CTransaction::CheckTransaction() : txout empty for user transaction"));
-        if( nBestHeight >= NewTxFee_RewardCoinYear_Active_Height )
+        if( bChkMiniValue && (nBestHeight >= NewTxFee_RewardCoinYear_Active_Height) )
         {
             if ((!txout.IsEmpty()) && txout.nValue < MIN_TXOUT_AMOUNT)
                 return DoS(100, error("CTransaction::CheckTransaction() : txout.nValue below minimum"));

@@ -450,6 +450,7 @@ bool CTxDB::LoadBlockIndex()
     {
         if (fRequestShutdown || pindex->nHeight < nBestHeight-nCheckDepth)
             break;
+        if( pindex->nHeight < NewTxFee_RewardCoinYear_Active_Height ) break;  // 2015.10.28 add
         CBlock block;
         if (!block.ReadFromDisk(pindex))
             return error("LoadBlockIndex() : block.ReadFromDisk failed");
