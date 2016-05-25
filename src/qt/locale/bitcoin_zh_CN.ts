@@ -74,6 +74,11 @@ This product includes software developed by the OpenSSL Project for use in the O
         <translation>请不要发币给包含 "BitNetCheque, BitNetLottery" 字样的标签地址。</translation>
     </message>	
     <message>
+        <location line="-46"/>
+        <source>Hide Public Address</source>
+        <translation>隐藏公共地址</translation>
+    </message>	
+    <message>
         <location line="+60"/>
         <source>&amp;Copy Address</source>
         <translation>复制地址(&amp;C)</translation>
@@ -441,6 +446,16 @@ This product includes software developed by the OpenSSL Project for use in the O
         <translation>更改设置选项</translation>
     </message>
     <message>
+        <location line="+45"/>
+        <source>BitNet Options</source>
+        <translation>币联网设置</translation>
+    </message>
+    <message>
+        <location line="+45"/>
+        <source>Modify configuration options for BitNet</source>
+        <translation>更改币联网设置</translation>
+    </message>
+    <message>
         <location line="+18"/>
         <source>Export the data in the current tab to a file</source>
         <translation>导出当前标签页的数据</translation>
@@ -472,8 +487,8 @@ This product includes software developed by the OpenSSL Project for use in the O
     </message>
     <message>
         <location line="+10"/>
-        <source>&amp;BitNet</source>
-        <translation>币联网(&amp;D)</translation>
+        <source>&amp;P2P Chat</source>
+        <translation>点对点聊天(&amp;D)</translation>
     </message>
     <message>
         <location line="+1"/>
@@ -507,8 +522,18 @@ This product includes software developed by the OpenSSL Project for use in the O
     </message>
     <message>
         <location line="+1"/>
+        <source>BMarket</source>
+        <translation>币码客</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Open BitNet Resource Market</source>
+        <translation>打开币码客资源交易站</translation>
+    </message>
+    <message>
+        <location line="+1"/>
         <source>VPN Dial</source>
-        <translation>VPN拨号</translation>
+        <translation>科学上网</translation>
     </message>
     <message>
         <location line="+1"/>
@@ -519,6 +544,16 @@ This product includes software developed by the OpenSSL Project for use in the O
         <location line="+1"/>
         <source>BitNet P2P Lottery</source>
         <translation>币联网去中心化币链彩</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Cheque</source>
+        <translation>币支票</translation>
+    </message>
+    <message>
+        <location line="+1"/>
+        <source>Ad Bonus</source>
+        <translation>红包</translation>
     </message>
     <message>
         <location line="+1"/>
@@ -1739,8 +1774,8 @@ This label turns red, if the priority is smaller than &quot;medium&quot;.
         <location line="+86"/>
         <location line="+86"/>
         <location line="+32"/>
-        <source>0.00 BC</source>
-        <translation>123.456 BC {0.00 ?}</translation>
+        <source>0.00 VPN</source>
+        <translation>123.456 VPN {0.00 ?}</translation>
     </message>
     <message>
         <location line="-191"/>
@@ -1809,8 +1844,8 @@ This label turns red, if the priority is smaller than &quot;medium&quot;.
     </message>
     <message>
         <location line="+16"/>
-        <source>123.456 BC</source>
-        <translation>123.456 BC</translation>
+        <source>123.456 VPN</source>
+        <translation>123.456 VPN</translation>
     </message>
     <message>
         <location line="+31"/>
@@ -2018,8 +2053,23 @@ This label turns red, if the priority is smaller than &quot;medium&quot;.
     </message>
     <message>
         <location line="+18"/>
+        <source>Buy Domain</source>
+        <translation>购买域名</translation>
+    </message>
+    <message>
+        <location line="+18"/>
         <source>Coin Join</source>
         <translation>混 币</translation>
+    </message>
+    <message>
+        <location line="+18"/>
+        <source>Coin Freeze</source>
+        <translation>币 冻</translation>
+    </message>
+    <message>
+        <location line="+18"/>
+        <source>Freeze X minutes before using these coins|Pay To Address|After thaw's target address(not required)  [e.g. 60|Vf4DFB...VYQQlm]</source>
+        <translation>在使用之前冻结X分钟|接收地址|解冻后的目标地址(可不填)  [例如: 60|Vf4DFB...VYQQlm]</translation>
     </message>
     <message>
         <location line="+18"/>
@@ -2040,6 +2090,16 @@ This label turns red, if the priority is smaller than &quot;medium&quot;.
         <location line="+18"/>
         <source>Please enable coin control features and select lottery address as input</source>
         <translation>请启用币控制功能，然后选择币链彩地址作为输入</translation>
+    </message>
+    <message>
+        <location line="+18"/>
+        <source>Please contact BitNet Team to determine the price</source>
+        <translation>请联系币联网团队确定价格</translation>
+    </message>
+    <message>
+        <location line="+18"/>
+        <source>Enter you want to buy domain name, it is also your wallet nickname(e.g. abc.com)</source>
+        <translation>请输入你要买的域名名称，这也是你钱包的昵称（例如 abc.com）</translation>
     </message>
     <message>
         <location line="+18"/>
@@ -2391,6 +2451,11 @@ This label turns red, if the priority is smaller than &quot;medium&quot;.
         <translation>交易ID</translation>
     </message>
     <message>
+        <location line="+2"/>
+        <source>Transaction Message</source>
+        <translation>交易留言</translation>
+    </message>
+    <message>
         <location line="+3"/>
         <source>Generated coins must mature 110 blocks before they can be spent. When you generated this block, it was broadcast to the network to be added to the block chain. If it fails to get into the chain, its state will change to &quot;not accepted&quot; and it won&apos;t be spendable. This may occasionally happen if another node generates a block within a few seconds of yours.</source>
         <translation>通过权益累积获得的金额需要在110个块确认后方可使用。此数据块生成时，将被广播到网络并加入区块链。如果未能成功加入区块链，其状态会显示为“未接受”，该部分金额也不可被使用。如果其他节点在您生成区块后的几秒钟内也生成了区块，这种情况会偶尔发生。</translation>
@@ -2470,6 +2535,11 @@ This label turns red, if the priority is smaller than &quot;medium&quot;.
         <location line="+0"/>
         <source>Amount</source>
         <translation>数量</translation>
+    </message>
+    <message>
+        <location line="+0"/>
+        <source>Transaction comment</source>
+        <translation>交易留言</translation>
     </message>
     <message>
         <location line="+60"/>
